@@ -1,0 +1,512 @@
+{% extends "base.html" %}
+{% block title %}Send — VaultCore Wallet{% endblock %}
+
+{% block content %}
+
+<section class="send-page">
+
+  <!-- page title -->
+  <div class="send-header">
+    <h2 class="send-title">Send Crypto</h2>
+    <p class="send-sub">Transfer funds to any wallet address</p>
+  </div>
+
+  <!-- progress steps -->
+  <!-- STEP 1: Network selector -->
+  <div class="send-step" id="stepNetwork">
+    <h3 class="step-title">Select Network</h3>
+    <p class="step-desc">Choose the blockchain network you are sending from.</p>
+
+    <!-- Popular networks -->
+    <div class="network-section-label">Popular Networks</div>
+    <div class="network-grid" id="networkGridPopular">
+      {% for key, net in popular_networks.items() %}
+      <div class="network-tile" data-network="{{ key }}"
+          data-symbol="{{ net.symbol }}"
+          onclick="selectNetwork('{{ key }}', '{{ net.symbol }}', '{{ net.label }}')">
+        <div class="network-symbol">{{ net.symbol }}</div>
+        <div class="network-name">{{ net.label }}</div>
+        <div class="network-fee">Fee ≈ ${{ "%.2f"|format(net.fee) }}</div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- All other networks (list format) -->
+    {% if all_networks %}
+    <div class="network-section-label" style="margin-top: 24px;">All Networks</div>
+    <div class="network-list">
+      {% for key, net in all_networks.items() %}
+      <div class="network-list-item"
+          onclick="selectNetwork('{{ key }}', '{{ net.symbol }}', '{{ net.label }}')">
+        <div class="network-list-icon">{{ net.symbol }}</div>
+        <div class="network-list-info">
+          <div class="network-list-name">{{ net.label }}</div>
+          <div class="network-list-fee">Network fee ≈ ${{ "%.2f"|format(net.fee) }}</div>
+        </div>
+        <div class="network-list-arrow">→</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="balance-bar" id="balanceBar" style="display:none">
+      <span class="balance-label">Available balance:</span>
+      <span class="balance-value" id="balanceValue">—</span>
+      <span class="balance-symbol" id="balanceSymbol"></span>
+    </div>
+
+    <button class="btn-next" id="btnStep1Next"
+            onclick="goToStep(2)" disabled>
+      Continue →
+    </button>
+  </div>
+
+    <!-- ── STEP 2: Wallet address ── -->
+    <div class="send-step hidden" id="stepAddress">
+      <h3 class="step-title">Recipient Address</h3>
+      <p class="step-desc">Enter the wallet address you are sending to.</p>
+
+      <label class="field-label">
+        Wallet Address
+        <span class="field-hint" id="addressHint"></span>
+      </label>
+      <div class="input-wrap">
+        <input type="text" id="addressInput"
+               class="send-input"
+               placeholder="Paste wallet address here"
+               autocomplete="off"
+               autocorrect="off"
+               autocapitalize="off"
+               spellcheck="false"
+               oninput="onAddressInput()" />
+        <button class="btn-paste" onclick="pasteAddress()"
+                title="Paste from clipboard">⎘</button>
+      </div>
+      <div class="field-error" id="addressError"></div>
+      <div class="field-ok"    id="addressOk"></div>
+
+      <div class="step-nav">
+        <button class="btn-back" onclick="goToStep(1)">← Back</button>
+        <button class="btn-next" id="btnStep2Next"
+                onclick="goToStep(3)" disabled>
+          Continue →
+        </button>
+      </div>
+    </div>
+
+    <!-- ── STEP 3: Amount ── -->
+    <div class="send-step hidden" id="stepAmount">
+      <h3 class="step-title">Enter Amount</h3>
+      <p class="step-desc">How much would you like to send?</p>
+
+      <div class="amount-balance-row">
+        <span class="field-label">Amount (<span id="amtSymbol"></span>)</span>
+        <button class="btn-max" onclick="setMax()">Send Max</button>
+      </div>
+
+      <div class="input-wrap">
+        <input type="text"
+               id="amountInput"
+               class="send-input"
+               inputmode="decimal"
+               placeholder="0.00"
+               oninput="onAmountInput()" />
+      </div>
+      <div class="field-error" id="amountError"></div>
+
+      <!-- insufficient balance warning -->
+      <div class="insufficient-box" id="insufficientBox" style="display:none">
+        <div class="insuf-icon">⚠</div>
+        <div class="insuf-body">
+          <strong class="insuf-title">Insufficient Balance</strong>
+          <p class="insuf-msg" id="insufMsg"></p>
+          <div class="insuf-actions">
+            <a href="{{ url_for('receive') }}" class="btn-insuf-action">
+              ↓ Deposit
+            </a>
+            <a href="{{ url_for('market') }}" class="btn-insuf-action btn-buy">
+              ⇄ Buy Crypto
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- fee estimate -->
+      <div class="fee-row" id="feeRow" style="display:none">
+        <span class="fee-label">Estimated network fee</span>
+        <span class="fee-value" id="feeValue"></span>
+      </div>
+
+      <div class="step-nav">
+        <button class="btn-back" onclick="goToStep(2)">← Back</button>
+        <button class="btn-next" id="btnStep3Next"
+                onclick="goToStep(4)" disabled>
+          Review →
+        </button>
+      </div>
+    </div>
+
+    <!-- ── STEP 4: Review & confirm ── -->
+    <div class="send-step hidden" id="stepConfirm">
+      <h3 class="step-title">Review Transaction</h3>
+      <p class="step-desc">Please double-check everything before confirming.</p>
+
+      <div class="review-card">
+        <div class="review-row">
+          <span class="review-label">Network</span>
+          <span class="review-value" id="reviewNetwork"></span>
+        </div>
+        <div class="review-row">
+          <span class="review-label">To Address</span>
+          <span class="review-value mono" id="reviewAddress"></span>
+        </div>
+        <div class="review-row">
+          <span class="review-label">Amount</span>
+          <span class="review-value highlight" id="reviewAmount"></span>
+        </div>
+        <div class="review-row">
+          <span class="review-label">Est. Fee</span>
+          <span class="review-value" id="reviewFee"></span>
+        </div>
+        <div class="review-row total">
+          <span class="review-label">Total Deducted</span>
+          <span class="review-value highlight" id="reviewTotal"></span>
+        </div>
+      </div>
+
+      <div class="confirm-warning">
+        ⚠  Transactions are irreversible. Verify the address carefully.
+      </div>
+
+      <div class="step-nav">
+        <button class="btn-back" onclick="goToStep(3)">← Back</button>
+        <button class="btn-confirm" id="btnConfirm"
+                onclick="submitSend()">
+          Confirm &amp; Send
+        </button>
+      </div>
+    </div>
+
+    <!-- ── SUCCESS screen ── -->
+    <div class="send-step hidden" id="stepSuccess">
+      <div class="success-screen">
+        <div class="success-icon">✓</div>
+        <h3 class="success-title">Transaction Sent!</h3>
+        <p class="success-msg" id="successMsg"></p>
+        <div class="success-tx">
+          <span class="tx-label">Transaction ID</span>
+          <span class="tx-value mono" id="successTxId"></span>
+        </div>
+        <div class="success-actions">
+          <button class="btn-next" onclick="resetForm()">Send Another</button>
+          <a href="{{ url_for('wallet') }}" class="btn-back">View Wallet</a>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+
+<script>
+// ─────────────────────────────────────────────
+//  State
+// ─────────────────────────────────────────────
+const state = {
+  network:  '',
+  symbol:   '',
+  label:    '',
+  balance:  0,
+  fee:      0,
+  address:  '',
+  amount:   0,
+};
+
+// fee map mirrors NETWORKS in send.py
+const FEES = {
+  bitcoin:  2.50,
+  ethereum: 1.80,
+  bnb:      0.20,
+  solana:   0.00025,
+  tron:     1.00,
+  xrp:      0.01,
+};
+
+// ─────────────────────────────────────────────
+//  Step navigation
+// ─────────────────────────────────────────────
+const STEPS = ['stepNetwork','stepAddress','stepAmount','stepConfirm','stepSuccess'];
+const INDS  = ['step1Indicator','step2Indicator','step3Indicator','step4Indicator'];
+
+function goToStep(n) {
+  STEPS.forEach((id,i) => {
+    document.getElementById(id).classList.toggle('hidden', i !== n-1);
+  });
+  INDS.forEach((id,i) => {
+    const el = document.getElementById(id);
+    el.classList.toggle('active',    i < n);
+    el.classList.toggle('completed', i < n-1);
+  });
+
+  // populate specific step content when navigating
+  if (n === 2) showAddressHint();
+  if (n === 3) document.getElementById('amtSymbol').textContent = state.symbol;
+  if (n === 4) populateReview();
+}
+
+// ─────────────────────────────────────────────
+//  Step 1 — network selection
+// ─────────────────────────────────────────────
+async function selectNetwork(key, symbol, label) {
+  // highlight selected tile
+  document.querySelectorAll('.network-tile').forEach(t =>
+    t.classList.remove('selected'));
+  document.querySelector(`[data-network="${key}"]`)
+    .classList.add('selected');
+
+  state.network = key;
+  state.symbol  = symbol;
+  state.label   = label;
+  state.fee     = FEES[key] || 0;
+
+  // fetch balance
+  const bar = document.getElementById('balanceBar');
+  bar.style.display = 'flex';
+  document.getElementById('balanceValue').textContent  = '…';
+  document.getElementById('balanceSymbol').textContent = symbol;
+  document.getElementById('btnStep1Next').disabled = true;
+
+  try {
+    const res  = await fetch(`/api/balance/${symbol}`);
+    const data = await res.json();
+    state.balance = data.balance;
+    document.getElementById('balanceValue').textContent =
+      data.balance.toFixed(8);
+    document.getElementById('btnStep1Next').disabled = false;
+  } catch(e) {
+    console.error('Balance fetch failed:', e);
+    document.getElementById('balanceValue').textContent = 'Error';
+    document.getElementById('btnStep1Next').disabled = true;
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Step 2 — address input
+// ─────────────────────────────────────────────
+
+// address hint per network (mirrors Python NETWORKS)
+const ADDRESS_HINTS = {
+  bitcoin:  'Starts with 1, 3, or bc1 — 26 to 62 characters',
+  ethereum: 'Starts with 0x — 42 characters total',
+  bnb:      'Starts with 0x — 42 characters total (BEP-20)',
+  solana:   'Base58 — 32 to 44 characters',
+  tron:     'Starts with T — 34 characters',
+  xrp:      'Starts with r — 25 to 35 characters',
+};
+
+// client-side regex mirrors (for instant feedback before server validates)
+const ADDRESS_RE = {
+  bitcoin:  /^(1|3|bc1)[a-zA-HJ-NP-Z0-9]{25,62}$/,
+  ethereum: /^0x[a-fA-F0-9]{40}$/,
+  bnb:      /^0x[a-fA-F0-9]{40}$/,
+  solana:   /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
+  tron:     /^T[a-zA-Z0-9]{33}$/,
+  xrp:      /^r[a-zA-Z0-9]{24,34}$/,
+};
+
+function showAddressHint() {
+  document.getElementById('addressHint').textContent =
+    ADDRESS_HINTS[state.network] || '';
+}
+
+function onAddressInput() {
+  const raw = document.getElementById('addressInput').value;
+  // strip spaces, tabs — allow only printable ASCII
+  const cleaned = raw.replace(/[^\x20-\x7E]/g, '');
+  if (cleaned !== raw) {
+    document.getElementById('addressInput').value = cleaned;
+  }
+
+  const errEl = document.getElementById('addressError');
+  const okEl  = document.getElementById('addressOk');
+  const btn   = document.getElementById('btnStep2Next');
+
+  if (!cleaned) {
+    errEl.textContent = '';
+    okEl.textContent  = '';
+    btn.disabled = true;
+    return;
+  }
+
+  const re = ADDRESS_RE[state.network];
+  if (re && re.test(cleaned)) {
+    errEl.textContent = '';
+    okEl.textContent  = '✓ Address format looks valid';
+    state.address     = cleaned;
+    btn.disabled      = false;
+  } else {
+    okEl.textContent  = '';
+    errEl.textContent = ADDRESS_HINTS[state.network] || 'Invalid address format.';
+    btn.disabled      = true;
+  }
+}
+
+async function pasteAddress() {
+  try {
+    const text = await navigator.clipboard.readText();
+    document.getElementById('addressInput').value = text;
+    onAddressInput();
+  } catch(e) {
+    document.getElementById('addressError').textContent =
+      'Clipboard access denied — please paste manually.';
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Step 3 — amount input
+// ─────────────────────────────────────────────
+function onAmountInput() {
+  let raw = document.getElementById('amountInput').value;
+
+  // allow only digits and a single decimal point
+  raw = raw.replace(/[^0-9.]/g, '');
+  const parts = raw.split('.');
+  if (parts.length > 2) raw = parts[0] + '.' + parts.slice(1).join('');
+  document.getElementById('amountInput').value = raw;
+
+  const errEl   = document.getElementById('amountError');
+  const insuf   = document.getElementById('insufficientBox');
+  const feeRow  = document.getElementById('feeRow');
+  const btn     = document.getElementById('btnStep3Next');
+
+  errEl.textContent = '';
+  insuf.style.display = 'none';
+  feeRow.style.display = 'none';
+  btn.disabled = true;
+
+  const amount = parseFloat(raw);
+
+  if (!raw || isNaN(amount) || amount <= 0) {
+    errEl.textContent = amount <= 0 && raw ? 'Amount must be greater than zero.' : '';
+    return;
+  }
+
+  if (amount > state.balance) {
+    insuf.style.display = 'flex';
+    document.getElementById('insufMsg').textContent =
+      `You need ${amount.toFixed(8)} ${state.symbol} but only have ` +
+      `${state.balance.toFixed(8)} ${state.symbol} available. ` +
+      `Please deposit more funds or buy crypto to continue.`;
+    return;
+  }
+
+  state.amount = amount;
+  feeRow.style.display = 'flex';
+  document.getElementById('feeValue').textContent =
+    `≈ $${state.fee.toFixed(4)}`;
+  btn.disabled = false;
+}
+
+function setMax() {
+  if (!state.balance || state.balance <= 0) return;
+  // leave a small buffer for fees
+  const maxAmt = Math.max(0, state.balance - 0.0001);
+  document.getElementById('amountInput').value = maxAmt.toFixed(8);
+  onAmountInput();
+}
+
+// ─────────────────────────────────────────────
+//  Step 4 — review
+// ─────────────────────────────────────────────
+function populateReview() {
+  const addr = state.address;
+  const short = addr.length > 20
+    ? addr.slice(0,10) + '…' + addr.slice(-8)
+    : addr;
+
+  document.getElementById('reviewNetwork').textContent =
+    state.label;
+  document.getElementById('reviewAddress').textContent =
+    short;
+  document.getElementById('reviewAddress').title = addr;
+  document.getElementById('reviewAmount').textContent =
+    `${state.amount.toFixed(8)} ${state.symbol}`;
+  document.getElementById('reviewFee').textContent =
+    `≈ $${state.fee.toFixed(4)}`;
+  document.getElementById('reviewTotal').textContent =
+    `${state.amount.toFixed(8)} ${state.symbol} + fee`;
+}
+
+// ─────────────────────────────────────────────
+//  Submit
+// ─────────────────────────────────────────────
+async function submitSend() {
+  const btn = document.getElementById('btnConfirm');
+  btn.disabled    = true;
+  btn.textContent = 'Sending…';
+
+  try {
+    const res  = await fetch('/api/send', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({
+        network: state.network,
+        address: state.address,
+        amount:  state.amount,
+      }),
+    });
+    const data = await res.json();
+
+    if (!data.success) {
+      // route error back to the right field
+      if (data.error_type === 'insufficient_balance') {
+        goToStep(3);
+        document.getElementById('insufficientBox').style.display = 'flex';
+        document.getElementById('insufMsg').textContent = data.error;
+      } else if (data.field === 'address') {
+        goToStep(2);
+        document.getElementById('addressError').textContent = data.error;
+      } else if (data.field === 'amount') {
+        goToStep(3);
+        document.getElementById('amountError').textContent = data.error;
+      } else {
+        document.getElementById('amountError').textContent =
+          data.error || 'Something went wrong. Please try again.';
+      }
+      btn.disabled    = false;
+      btn.textContent = 'Confirm & Send';
+      return;
+    }
+
+    // success
+    document.getElementById('successMsg').textContent   = data.message;
+    document.getElementById('successTxId').textContent  = data.tx_id;
+    goToStep(5);
+
+  } catch(e) {
+    document.getElementById('amountError').textContent =
+      'Network error — please try again.';
+    btn.disabled    = false;
+    btn.textContent = 'Confirm & Send';
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Reset
+// ─────────────────────────────────────────────
+function resetForm() {
+  Object.assign(state, {
+    network:'', symbol:'', label:'',
+    balance:0, fee:0, address:'', amount:0
+  });
+  document.getElementById('addressInput').value = '';
+  document.getElementById('amountInput').value  = '';
+  document.querySelectorAll('.network-tile')
+    .forEach(t => t.classList.remove('selected'));
+  document.getElementById('balanceBar').style.display = 'none';
+  document.getElementById('btnStep1Next').disabled    = true;
+  goToStep(1);
+}
+</script>
+
+{% endblock %}

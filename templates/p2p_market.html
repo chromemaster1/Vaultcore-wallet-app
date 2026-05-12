@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}P2P Trading — VaultCore Wallet{% endblock %}
+
+{% block content %}
+
+<section class="p2p-page">
+
+  <div class="p2p-header">
+    <h2 class="page-title">P2P Marketplace</h2>
+    <p class="page-sub">Trade crypto directly with other users</p>
+  </div>
+
+  <!-- Filter Bar -->
+  <div class="p2p-filters">
+    <select class="p2p-filter-select" id="filterCrypto">
+      <option value="">All Coins</option>
+      <option value="BTC">Bitcoin (BTC)</option>
+      <option value="ETH">Ethereum (ETH)</option>
+      <option value="USDT">Tether (USDT)</option>
+    </select>
+
+    <select class="p2p-filter-select" id="filterFiat">
+      <option value="">All Currencies</option>
+      <option value="NGN">NGN</option>
+      <option value="USD">USD</option>
+      <option value="KES">KES</option>
+      <option value="GHS">GHS</option>
+    </select>
+
+    <select class="p2p-filter-select" id="filterType">
+      <option value="sell">Buy Crypto (I'm paying cash)</option>
+      <option value="buy">Sell Crypto (I'm receiving cash)</option>
+    </select>
+
+    <button class="btn-create-offer" onclick="alert('Create offer — coming soon')">
+      + Create Offer
+    </button>
+  </div>
+
+  <!-- Offers List -->
+  <div class="p2p-offers" id="p2pOffers">
+    <!-- Mock offers populated by JS -->
+  </div>
+
+</section>
+
+<script>
+const mockOffers = [
+  {
+    id: 1, trader: "CryptoKing92", trades: 142, rating: 98.5,
+    type: "sell", crypto: "BTC", amount: "0.05", fiat: "NGN",
+    price: 110500000, payment: "Bank Transfer", limit: "₦50,000 - ₦5,000,000"
+  },
+  {
+    id: 2, trader: "FastCash_NG", trades: 87, rating: 99.2,
+    type: "sell", crypto: "USDT", amount: "5000", fiat: "NGN",
+    price: 1680, payment: "Bank Transfer, Mobile Money", limit: "₦10,000 - ₦500,000"
+  },
+  {
+    id: 3, trader: "EthTrader01", trades: 203, rating: 97.8,
+    type: "sell", crypto: "ETH", amount: "2.5", fiat: "USD",
+    price: 3550, payment: "PayPal, Zelle", limit: "$100 - $5,000"
+  },
+  {
+    id: 4, trader: "NairaMaster", trades: 56, rating: 96.4,
+    type: "buy", crypto: "BTC", amount: "0.1", fiat: "NGN",
+    price: 109800000, payment: "Bank Transfer", limit: "₦100,000 - ₦10,000,000"
+  },
+  {
+    id: 5, trader: "QuickSwap_KE", trades: 124, rating: 98.9,
+    type: "sell", crypto: "USDT", amount: "2000", fiat: "KES",
+    price: 131, payment: "M-Pesa", limit: "KSh 5,000 - KSh 200,000"
+  },
+];
+
+function renderOffers() {
+  const html = mockOffers.map(o => `
+    <div class="p2p-offer-card">
+      <div class="offer-header">
+        <div class="trader-info">
+          <div class="trader-name">${o.trader}</div>
+          <div class="trader-stats">
+            ${o.trades} trades | ${o.rating}% positive
+          </div>
+        </div>
+        <div class="offer-type ${o.type}">${o.type.toUpperCase()}</div>
+      </div>
+      <div class="offer-body">
+        <div class="offer-row">
+          <span class="offer-label">Amount</span>
+          <span class="offer-value">${o.amount} ${o.crypto}</span>
+        </div>
+        <div class="offer-row">
+          <span class="offer-label">Price</span>
+          <span class="offer-value price-highlight">
+            ${o.price.toLocaleString()} ${o.fiat}
+          </span>
+        </div>
+        <div class="offer-row">
+          <span class="offer-label">Payment</span>
+          <span class="offer-value">${o.payment}</span>
+        </div>
+        <div class="offer-row">
+          <span class="offer-label">Limits</span>
+          <span class="offer-value">${o.limit}</span>
+        </div>
+      </div>
+      <button class="btn-trade-p2p" onclick="startP2PTrade(${o.id})">
+        ${o.type === 'sell' ? 'Buy' : 'Sell'} ${o.crypto}
+      </button>
+    </div>
+  `).join('');
+
+  document.getElementById('p2pOffers').innerHTML = html;
+}
+
+function startP2PTrade(id) {
+  alert(`Start P2P trade #${id} — full escrow flow coming soon`);
+}
+
+renderOffers();
+</script>
+
+{% endblock %}

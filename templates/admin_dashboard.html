@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard — VaultCore Wallet{% endblock %}
+
+{% block content %}
+<div class="admin-wrapper">
+  <h1>Admin Dashboard</h1>
+
+  <section>
+    <h2>Pending Transactions</h2>
+    <table id="pendingTxTable" class="table">
+      <thead><tr><th>TX ID</th><th>User</th><th>Type</th><th>Symbol</th><th>Amount</th><th>To</th><th>Action</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Wallet Hashes</h2>
+    <div id="hashList"></div>
+    <h3>Set / Update Hash</h3>
+    <form id="hashForm" onsubmit="saveHash(event)">
+      <input id="symbol" placeholder="Symbol (e.g. BTC)" required />
+      <input id="address" placeholder="Address / Hash" required />
+      <input id="note" placeholder="Note (optional)" />
+      <button type="submit">Save</button>
+    </form>
+  </section>
+
+  <section>
+    <h2>Support Tickets</h2>
+    <div id="ticketList"></div>
+  </section>
+
+  <section>
+    <h2>Site Mode</h2>
+    <p>Toggle the "Coming Soon" page for public visitors.</p>
+    <button id="comingSoonBtn">Toggle Coming Soon</button>
+    <span id="comingSoonStatus" style="margin-left:12px;font-weight:bold"></span>
+  </section>
+
+</div>
+
+<script src="{{ url_for('static', filename='assets/js/admin.js') }}"></script>
+{% endblock %}

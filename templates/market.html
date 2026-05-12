@@ -1,0 +1,510 @@
+{% extends "base.html" %}
+{% block title %}Market — VaultCore Wallet{% endblock %}
+
+{% block content %}
+
+<section class="market-page">
+  <div class="market-tabs">
+    <button class="market-tab active" onclick="switchTab('all')" id="tabAll">
+      All Markets
+    </button>
+    <button class="market-tab" onclick="switchTab('watchlist')" id="tabWatchlist">
+      ⭐ Watchlist (<span id="watchlistCount">0</span>)
+    </button>
+  </div>
+
+  <div class="market-meta">
+    <input id="marketSearch" class="market-search" placeholder="Search pair or name…" />
+    <div class="market-stats">Total: <span id="marketCount">0 pairs</span></div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="market-table" id="marketTable">
+      <thead>
+        <tr>
+          <th class="th-star">⭐</th>
+          <th data-col="rank"       class="sortable">#</th>
+          <th data-col="pair"       class="sortable">Pair</th>
+          <th data-col="name"       class="sortable">Name</th>
+          <th data-col="price"      class="sortable">Price (USD)</th>
+          <th data-col="change_24h" class="sortable">24h %</th>
+          <th data-col="volume_24h" class="sortable">Volume 24h</th>
+          <th data-col="market_cap" class="sortable">Market Cap</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="marketBody">
+        <tr><td colspan="9" class="table-loading">Loading market data…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+
+<!-- ═══════════════════════════════════════════
+     CHART + TRADE MODAL
+════════════════════════════════════════════ -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal-box" id="modalBox">
+
+    <!-- modal header -->
+    <div class="modal-header">
+      <div class="modal-pair-info">
+        <span class="modal-pair-name" id="modalPairName">BTC/USDT</span>
+        <span class="modal-price"     id="modalPrice">—</span>
+        <span class="modal-chg"       id="modalChg">—</span>
+      </div>
+      <div class="modal-header-right">
+        <button class="btn-trade-toggle" id="btnTradeToggle">⇄ Trade</button>
+        <button class="modal-close"      id="modalClose">✕</button>
+      </div>
+    </div>
+
+    <!-- timeframe selector -->
+    <div class="tf-bar" id="tfBar">
+      <button class="tf-btn" data-tf="1m">1m</button>
+      <button class="tf-btn" data-tf="5m">5m</button>
+      <button class="tf-btn" data-tf="15m">15m</button>
+      <button class="tf-btn active" data-tf="1h">1h</button>
+      <button class="tf-btn" data-tf="4h">4h</button>
+      <button class="tf-btn" data-tf="1d">1D</button>
+      <button class="tf-btn" data-tf="1w">1W</button>
+    </div>
+
+    <!-- chart area -->
+    <div class="modal-body">
+      <div id="chartContainer"></div>
+      <div id="chartError" class="chart-error" style="display:none"></div>
+
+      <!-- trade panel — slides in from right -->
+      <div class="trade-panel" id="tradePanel">
+        <div class="trade-panel-inner">
+          <h3 class="trade-title">Place Order</h3>
+          <div class="trade-mode-note" id="tradeModeNote"></div>
+
+          <div class="trade-toggle-row">
+            <button class="side-btn buy active" id="btnBuy"  onclick="setSide('BUY')">Buy</button>
+            <button class="side-btn sell"       id="btnSell" onclick="setSide('SELL')">Sell</button>
+          </div>
+
+          <label class="trade-label">Amount (USDT)</label>
+          <input type="number" id="tradeAmount" class="trade-input"
+                 placeholder="e.g. 50" min="1" step="1" />
+
+          <div class="trade-estimate" id="tradeEstimate"></div>
+
+          <button class="btn-confirm-trade" id="btnConfirmTrade"
+                  onclick="confirmTrade()">
+            Confirm Order
+          </button>
+
+          <div class="trade-result" id="tradeResult"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- TradingView Lightweight Charts (free, open source) -->
+<script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+
+<script>
+let watchlist = new Set(JSON.parse(localStorage.getItem('watchlist') || '[]'));
+let currentTab = 'all';
+
+function updateWatchlistCount() {
+  document.getElementById('watchlistCount').textContent = watchlist.size;
+}
+
+function toggleWatchlist(symbol) {
+  if (watchlist.has(symbol)) {
+    watchlist.delete(symbol);
+  } else {
+    watchlist.add(symbol);
+  }
+  localStorage.setItem('watchlist', JSON.stringify([...watchlist]));
+  updateWatchlistCount();
+// ─────────────────────────────────────────────
+//  State
+// ─────────────────────────────────────────────
+let allData        = [];
+let sortCol        = 'rank';
+let sortAsc        = true;
+let currentSymbol  = '';   // e.g. BTCUSDT
+let currentPair    = '';   // e.g. BTC/USDT
+let currentTF      = '1h';
+let tradeSide      = 'BUY';
+let chart          = null;
+let candleSeries   = null;
+let liveWS         = null;
+
+// refresh current view
+  if (currentTab === 'watchlist') {
+    const filtered = allData.filter(c => watchlist.has(c.symbol));
+    renderTable(filtered);
+  } else {
+    renderTable(allData);
+  }
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.market-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(tab === 'all' ? 'tabAll' : 'tabWatchlist').classList.add('active');
+
+  if (tab === 'watchlist') {
+    const filtered = allData.filter(c => watchlist.has(c.symbol));
+    renderTable(filtered);
+    document.getElementById('marketCount').textContent = `${filtered.length} pairs`;
+  } else {
+    renderTable(allData);
+    document.getElementById('marketCount').textContent = `${allData.length} pairs`;
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Market table — load + render
+// ─────────────────────────────────────────────
+async function loadMarket() {
+  try {
+    const res = await fetch('/api/market-data');
+    allData   = await res.json();
+    if (allData.error) throw new Error(allData.error);
+    renderTable(allData);
+    document.getElementById('marketCount').textContent =
+      `${allData.length} pairs`;
+  } catch(e) {
+    document.getElementById('marketBody').innerHTML =
+      `<tr><td colspan="9" class="table-loading">
+         Failed to load: ${e.message}
+       </td></tr>`;
+  }
+}
+
+function fmt(n, d=2) {
+  return new Intl.NumberFormat('en-US',{
+    minimumFractionDigits:d, maximumFractionDigits:d
+  }).format(n);
+}
+function fmtPrice(p) { return p < 1 ? `$${fmt(p,4)}` : `$${fmt(p,2)}`; }
+function fmtLarge(n) {
+  if(n>=1e12) return `$${fmt(n/1e12,2)}T`;
+  if(n>=1e9)  return `$${fmt(n/1e9,2)}B`;
+  if(n>=1e6)  return `$${fmt(n/1e6,2)}M`;
+  return `$${fmt(n,0)}`;
+}
+
+function renderTable(data) {
+  const tbody = document.getElementById('marketBody');
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="table-loading">No results.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.map(c => {
+    const up  = c.change_24h >= 0;
+    const chg = (up?'+':'') + fmt(c.change_24h,2) + '%';
+    const binSym = c.pair.replace('/','');
+    const starred = watchlist.has(c.symbol);
+    return `
+      <tr>
+        <td class="td-star">
+          <button class="btn-star ${starred?'starred':''}"
+                  onclick="toggleWatchlist('${c.symbol}')"
+                  title="${starred?'Remove from':'Add to'} watchlist">
+            ${starred?'⭐':'☆'}
+          </button>
+        </td>
+        <td class="td-rank">#${c.rank}</td>
+        <td class="td-pair">${c.pair}</td>
+        <td class="td-name">${c.name}</td>
+        <td class="td-price">${fmtPrice(c.price)}</td>
+        <td class="td-chg ${up?'chg-up':'chg-down'}">${chg}</td>
+        <td class="td-vol">${fmtLarge(c.volume_24h)}</td>
+        <td class="td-mcap">${fmtLarge(c.market_cap)}</td>
+        <td class="td-actions">
+          <button class="btn-chart"
+                  onclick="openModal('${binSym}','${c.pair}',${c.price},${c.change_24h})">
+            📈 Chart
+          </button>
+          <button class="btn-trade"
+                  onclick="openModal('${binSym}','${c.pair}',${c.price},${c.change_24h}, true)">
+            ⇄ Trade
+          </button>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+// search
+document.getElementById('marketSearch').addEventListener('input', function(){
+  const q = this.value.toLowerCase();
+  const f = allData.filter(c =>
+    c.pair.toLowerCase().includes(q) || c.name.toLowerCase().includes(q));
+  renderTable(f);
+  document.getElementById('marketCount').textContent = `${f.length} pairs`;
+});
+
+// sort
+document.querySelectorAll('.sortable').forEach(th => {
+  th.addEventListener('click', function(){
+    const col = this.dataset.col;
+    if(sortCol===col) sortAsc=!sortAsc;
+    else { sortCol=col; sortAsc=true; }
+    document.querySelectorAll('.sortable')
+      .forEach(t=>t.classList.remove('sort-asc','sort-desc'));
+    this.classList.add(sortAsc?'sort-asc':'sort-desc');
+    const sorted = [...allData].sort((a,b)=>{
+      const av=a[col], bv=b[col];
+      if(typeof av==='number') return sortAsc?av-bv:bv-av;
+      return sortAsc
+        ? String(av).localeCompare(String(bv))
+        : String(bv).localeCompare(String(av));
+    });
+    renderTable(sorted);
+  });
+});
+
+
+// ─────────────────────────────────────────────
+//  Modal — open / close
+// ─────────────────────────────────────────────
+function openModal(symbol, pair, price, chg, openTrade=false) {
+  currentSymbol = symbol;
+  currentPair   = pair;
+
+  document.getElementById('modalPairName').textContent = pair;
+  document.getElementById('modalPrice').textContent    = fmtPrice(price);
+
+  const chgEl  = document.getElementById('modalChg');
+  chgEl.textContent = (chg>=0?'+':'') + fmt(chg,2) + '%';
+  chgEl.className   = 'modal-chg ' + (chg>=0?'chg-up':'chg-down');
+
+  document.getElementById('modalOverlay').classList.add('open');
+  document.getElementById('tradeResult').innerHTML = '';
+  document.getElementById('tradeEstimate').innerHTML = '';
+
+  // paper trade note
+  document.getElementById('tradeModeNote').innerHTML =
+    `{{ 'true' if paper_trade else 'false' }}` === 'true'
+      ? '<span class="paper-badge">PAPER TRADING — no real money</span>'
+      : '<span class="live-badge">⚠ LIVE TRADING</span>';
+
+  loadChart(symbol, currentTF);
+
+  if (openTrade) {
+    document.getElementById('tradePanel').classList.add('open');
+    document.getElementById('btnTradeToggle').classList.add('active');
+  }
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+  document.getElementById('tradePanel').classList.remove('open');
+  document.getElementById('btnTradeToggle').classList.remove('active');
+  if (liveWS) { liveWS.close(); liveWS = null; }
+  if (chart)  { chart.remove(); chart = null; candleSeries = null; }
+}
+
+document.getElementById('modalClose').addEventListener('click', closeModal);
+document.getElementById('modalOverlay').addEventListener('click', e => {
+  if (e.target.id === 'modalOverlay') closeModal();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+});
+
+document.getElementById('btnTradeToggle').addEventListener('click', function(){
+  const panel = document.getElementById('tradePanel');
+  const open  = panel.classList.toggle('open');
+  this.classList.toggle('active', open);
+});
+
+
+// ─────────────────────────────────────────────
+//  Chart — load candles + start WebSocket
+// ─────────────────────────────────────────────
+async function loadChart(symbol, interval) {
+  const container = document.getElementById('chartContainer');
+  const errEl     = document.getElementById('chartError');
+  errEl.style.display = 'none';
+
+  // destroy previous chart
+  if (chart) { chart.remove(); chart = null; candleSeries = null; }
+  if (liveWS) { liveWS.close(); liveWS = null; }
+
+  container.innerHTML = '<div class="chart-loading">Loading chart…</div>';
+
+  try {
+    const res  = await fetch(`/api/candles/${symbol}?interval=${interval}&limit=300`);
+    const data = await res.json();
+
+    if (data.error) throw new Error(data.error);
+    if (!data.length) throw new Error('No candle data returned.');
+
+    container.innerHTML = '';
+
+    // create chart
+    chart = LightweightCharts.createChart(container, {
+      width:  container.clientWidth,
+      height: container.clientHeight || 380,
+      layout: {
+        background: { color: '#161921' },
+        textColor:  '#9ca3af',
+      },
+      grid: {
+        vertLines:  { color: '#1e2230' },
+        horzLines:  { color: '#1e2230' },
+      },
+      crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+      rightPriceScale: { borderColor: '#2a2f3e' },
+      timeScale: {
+        borderColor:      '#2a2f3e',
+        timeVisible:      true,
+        secondsVisible:   false,
+      },
+    });
+
+    candleSeries = chart.addCandlestickSeries({
+      upColor:        '#22c55e',
+      downColor:      '#ef4444',
+      borderUpColor:  '#22c55e',
+      borderDownColor:'#ef4444',
+      wickUpColor:    '#22c55e',
+      wickDownColor:  '#ef4444',
+    });
+
+    candleSeries.setData(data);
+    chart.timeScale().fitContent();
+
+    // resize when modal resizes
+    const ro = new ResizeObserver(() => {
+      if (chart) chart.applyOptions({ width: container.clientWidth });
+    });
+    ro.observe(container);
+
+    // live WebSocket for last candle updates
+    startLiveStream(symbol, interval);
+
+  } catch(e) {
+    container.innerHTML = '';
+    errEl.style.display = 'flex';
+    errEl.textContent   = `Chart error: ${e.message}`;
+  }
+}
+
+function startLiveStream(symbol, interval) {
+  const stream = symbol.toLowerCase() + `@kline_${interval}`;
+  const url    = `wss://stream.binance.com:9443/ws/${stream}`;
+
+  liveWS = new WebSocket(url);
+
+  liveWS.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+    const k   = msg.k;
+    if (!candleSeries) return;
+    candleSeries.update({
+      time:  Math.floor(k.t / 1000),
+      open:  parseFloat(k.o),
+      high:  parseFloat(k.h),
+      low:   parseFloat(k.l),
+      close: parseFloat(k.c),
+    });
+    // update modal price in real time
+    document.getElementById('modalPrice').textContent =
+      fmtPrice(parseFloat(k.c));
+  };
+
+  liveWS.onerror = () => {
+    console.warn('Live stream error — chart will not update in real time.');
+  };
+}
+
+// timeframe buttons
+document.querySelectorAll('.tf-btn').forEach(btn => {
+  btn.addEventListener('click', function(){
+    document.querySelectorAll('.tf-btn').forEach(b=>b.classList.remove('active'));
+    this.classList.add('active');
+    currentTF = this.dataset.tf;
+    loadChart(currentSymbol, currentTF);
+  });
+});
+
+
+// ─────────────────────────────────────────────
+//  Trade panel
+// ─────────────────────────────────────────────
+function setSide(side) {
+  tradeSide = side;
+  document.getElementById('btnBuy').classList.toggle('active',  side==='BUY');
+  document.getElementById('btnSell').classList.toggle('active', side==='SELL');
+  updateEstimate();
+}
+
+document.getElementById('tradeAmount').addEventListener('input', updateEstimate);
+
+function updateEstimate() {
+  const amt   = parseFloat(document.getElementById('tradeAmount').value) || 0;
+  const price = parseFloat(
+    document.getElementById('modalPrice').textContent.replace(/[$,]/g,'')
+  ) || 0;
+  const el = document.getElementById('tradeEstimate');
+  if (!amt || !price) { el.innerHTML=''; return; }
+  const units = amt / price;
+  const sym   = currentPair.split('/')[0];
+  el.innerHTML = tradeSide === 'BUY'
+    ? `≈ <strong>${units.toFixed(6)}</strong> ${sym} for <strong>$${fmt(amt,2)}</strong> USDT`
+    : `≈ <strong>$${fmt(amt,2)}</strong> USDT for <strong>${units.toFixed(6)}</strong> ${sym}`;
+}
+
+async function confirmTrade() {
+  const amount = parseFloat(document.getElementById('tradeAmount').value);
+  const btn    = document.getElementById('btnConfirmTrade');
+  const result = document.getElementById('tradeResult');
+
+  if (!amount || amount <= 0) {
+    result.innerHTML = '<span class="trade-err">Enter a valid amount.</span>';
+    return;
+  }
+
+  btn.disabled     = true;
+  btn.textContent  = 'Placing order…';
+  result.innerHTML = '';
+
+  try {
+    const res  = await fetch('/api/trade', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({
+        symbol: currentSymbol,
+        side:   tradeSide,
+        amount: amount,
+      }),
+    });
+    const data = await res.json();
+
+    if (data.error) throw new Error(data.error);
+
+    result.innerHTML = `
+      <div class="trade-success">
+        ✓ Order placed<br>
+        <small>ID: ${data.orderId}</small><br>
+        <small>Status: ${data.status}</small>
+        ${data.paper ? '<br><small class="paper-note">(Paper trade — simulated)</small>' : ''}
+      </div>`;
+  } catch(e) {
+    result.innerHTML =
+      `<span class="trade-err">Error: ${e.message}</span>`;
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = 'Confirm Order';
+  }
+}
+
+// kick off
+loadMarket();
+updateWatchlistCount();
+</script>
+
+{% endblock %}

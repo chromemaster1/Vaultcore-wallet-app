@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="chat-container">
+  <h2>Live Support</h2>
+
+  <div id="chatBox" class="chat-box"></div>
+
+  <form onsubmit="sendMessage(event)">
+    <input id="chatInput" placeholder="Type your message...">
+    <button type="submit">Send</button>
+  </form>
+</div>
+
+<script>
+function sendMessage(e) {
+    e.preventDefault();
+
+    const input = document.getElementById("chatInput");
+    const box = document.getElementById("chatBox");
+
+    const msg = input.value;
+
+    box.innerHTML += `<div class="msg user">${msg}</div>`;
+
+    // fake reply (you can wire backend later)
+    setTimeout(() => {
+        box.innerHTML += `<div class="msg bot">Support will reply shortly.</div>`;
+    }, 1000);
+
+    input.value = "";
+}
+</script>
+
+{% endblock %}

@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Wallet — VaultCore Wallet{% endblock %}
+
+{% block content %}
+
+<section class="wallet-page">
+
+  <!-- ═══ Total Balance Card ═══ -->
+  <div class="wallet-balance-card">
+    <div class="balance-header">
+      <div class="balance-label">Total Wallet Value</div>
+      <button class="btn-hide-balance" id="btnHideWallet" onclick="toggleWalletBalance()">
+        <span id="walletHideIcon">👁</span>
+      </button>
+    </div>
+    <div class="balance-display">
+      <span class="balance-amount" id="walletAmount">$0.00</span>
+      <span class="balance-hidden" id="walletHidden">••••••</span>
+    </div>
+    <div class="balance-actions">
+      <a href="{{ url_for('receive') }}" class="wallet-action-btn">
+        <span>↓</span> Deposit
+      </a>
+      <a href="{{ url_for('send') }}" class="wallet-action-btn">
+        <span>↑</span> Send
+      </a>
+      <a href="{{ url_for('market') }}" class="wallet-action-btn">
+        <span>⇄</span> Trade
+      </a>
+    </div>
+  </div>
+
+  <!-- ═══ Holdings List ═══ -->
+  <div class="wallet-section">
+    <h3 class="section-title">Your Holdings</h3>
+    <div class="holdings-list" id="holdingsList">
+      <div class="loading-state">Loading holdings…</div>
+    </div>
+  </div>
+
+  <!-- ═══ Open Trades ═══ -->
+  <div class="wallet-section">
+    <h3 class="section-title">Open Trades</h3>
+    <div class="trades-list" id="tradesList">
+      <div class="loading-state">Loading trades…</div>
+    </div>
+  </div>
+
+</section>
+
+
+<script>
+let walletVisible = true;
+
+async function loadWallet() {
+  try {
+    const res  = await fetch('/api/wallet-summary');
+    const data = await res.json();
+
+    // total value
+    document.getElementById('walletAmount').textContent =
+      `$${data.total_value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+
+    // holdings
+    const holdingsHTML = Object.entries(data.holdings).map(([sym, h]) => {
+      const up = h.change_24h >= 0;
+      return `
+        <div class="holding-card">
+          <div class="holding-icon">${sym}</div>
+          <div class="holding-info">
+            <div class="holding-name">${sym}</div>
+            <div class="holding-amount">${h.balance.toFixed(8)} ${sym}</div>
+          </div>
+          <div class="holding-values">
+            <div class="holding-usd">$${h.usd_value.toFixed(2)}</div>
+            <div class="holding-chg ${up?'chg-up':'chg-down'}">
+              ${up?'+':''}${h.change_24h.toFixed(2)}%
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+
+    document.getElementById('holdingsList').innerHTML =
+      holdingsHTML || '<div class="empty-state">No holdings yet</div>';
+
+    // trades
+    const tradesHTML = data.open_trades.map(t => {
+      const isPnlUp = t.pnl >= 0;
+      return `
+        <div class="trade-card">
+          <div class="trade-header">
+            <span class="trade-pair">${t.pair}</span>
+            <span class="trade-side ${t.side.toLowerCase()}">${t.side}</span>
+          </div>
+          <div class="trade-details">
+            <div class="trade-row">
+              <span class="trade-label">Amount</span>
+              <span class="trade-value">${t.amount} ${t.pair.split('/')[0]}</span>
+            </div>
+            <div class="trade-row">
+              <span class="trade-label">Entry</span>
+              <span class="trade-value">$${t.entry_price.toFixed(2)}</span>
+            </div>
+            <div class="trade-row">
+              <span class="trade-label">Current</span>
+              <span class="trade-value">$${t.current_price.toFixed(2)}</span>
+            </div>
+            <div class="trade-row pnl-row">
+              <span class="trade-label">P&L</span>
+              <span class="trade-pnl ${isPnlUp?'up':'down'}">
+                ${isPnlUp?'+':''}$${t.pnl.toFixed(2)} (${isPnlUp?'+':''}${t.pnl_percent.toFixed(2)}%)
+              </span>
+            </div>
+          </div>
+          <div class="trade-footer">
+            <span class="trade-time">${t.opened_at}</span>
+            <button class="btn-close-trade" onclick="closeTrade('${t.id}')">Close</button>
+          </div>
+        </div>`;
+    }).join('');
+
+    document.getElementById('tradesList').innerHTML =
+      tradesHTML || '<div class="empty-state">No open trades</div>';
+
+  } catch(e) {
+    console.error('Wallet load failed:', e);
+    document.getElementById('holdingsList').innerHTML =
+      '<div class="error-state">Failed to load wallet data</div>';
+  }
+}
+
+function toggleWalletBalance() {
+  walletVisible = !walletVisible;
+  const amountEl = document.getElementById('walletAmount');
+  const hiddenEl = document.getElementById('walletHidden');
+  const iconEl   = document.getElementById('walletHideIcon');
+
+  if (walletVisible) {
+    amountEl.style.display = 'inline';
+    hiddenEl.style.display = 'none';
+    iconEl.textContent = '👁';
+  } else {
+    amountEl.style.display = 'none';
+    hiddenEl.style.display = 'inline';
+    iconEl.textContent = '👁‍🗨';
+  }
+}
+
+function closeTrade(id) {
+  alert(`Close trade ${id} — connect to your exchange API to implement`);
+}
+
+loadWallet();
+</script>
+
+{% endblock %}

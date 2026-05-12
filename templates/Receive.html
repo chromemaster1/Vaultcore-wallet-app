@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% block title %}Receive — VaultCore Wallet{% endblock %}
+
+{% block content %}
+
+<section class="receive-page">
+
+  <!-- ═══ Network Selector (initial view) ═══ -->
+  <div id="networkSelector" class="selector-view">
+    <div class="receive-header">
+      <h2 class="receive-title">Receive Crypto</h2>
+      <p class="receive-sub">Select a network to view your deposit address</p>
+    </div>
+
+    <div class="network-selector-grid">
+      {% for symbol, info in networks.items() %}
+      <div class="network-card" onclick="selectCrypto('{{ symbol }}')">
+        <div class="network-card-icon">{{ symbol }}</div>
+        <div class="network-card-name">{{ info.name }}</div>
+        <div class="network-card-net">{{ info.network }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+
+  <!-- ═══ Address Display (hidden until network selected) ═══ -->
+  <div id="addressView" class="address-view hidden">
+
+    <!-- back button -->
+    <button class="btn-back-top" onclick="backToSelector()">
+      ← Back to Networks
+    </button>
+
+    <!-- crypto info header -->
+    <div class="crypto-header">
+      <div class="crypto-symbol-big" id="cryptoSymbol">BTC</div>
+      <div class="crypto-info">
+        <h3 class="crypto-name" id="cryptoName">Bitcoin</h3>
+        <p class="crypto-network" id="cryptoNetwork">Bitcoin Mainnet</p>
+      </div>
+    </div>
+
+    <!-- warning banner -->
+    <div class="warning-banner">
+      <div class="warning-icon">⚠</div>
+      <div class="warning-text">
+        <strong>Send only <span id="warnSymbol">BTC</span></strong> to this address.
+        Sending other coins may result in permanent loss.
+      </div>
+    </div>
+
+    <!-- QR code card -->
+    <div class="qr-card">
+      <div class="qr-label">Scan QR Code</div>
+      <div class="qr-container">
+        <img id="qrImage" src="" alt="QR Code" class="qr-image" />
+      </div>
+    </div>
+
+    <!-- address display -->
+    <div class="address-card">
+      <div class="address-label">Your Deposit Address</div>
+      <div class="address-display" id="addressDisplay">
+        Loading…
+      </div>
+
+      <!-- action buttons -->
+      <div class="address-actions">
+        <button class="btn-action btn-copy" id="btnCopy" onclick="copyAddress()">
+          <span class="btn-icon">📋</span>
+          <span class="btn-text">Copy Address</span>
+        </button>
+
+        <button class="btn-action btn-share" id="btnShare" onclick="shareAddress()">
+          <span class="btn-icon">↗</span>
+          <span class="btn-text">Share</span>
+        </button>
+      </div>
+
+      <!-- copy feedback -->
+      <div class="copy-feedback" id="copyFeedback">
+        ✓ Address copied to clipboard
+      </div>
+    </div>
+
+    <!-- explorer link -->
+    <div class="explorer-row">
+      <a id="explorerLink" href="#" target="_blank" rel="noopener"
+         class="explorer-link">
+        View on Block Explorer →
+      </a>
+    </div>
+
+    <!-- deposit from exchange button -->
+    <a href="https://www.binance.com/en/buy-sell-crypto"
+       target="_blank"
+       rel="noopener"
+       class="btn-exchange">
+      <span class="exchange-icon">⇄</span>
+      <div class="exchange-text">
+        <div class="exchange-title">Don't have crypto yet?</div>
+        <div class="exchange-sub">Buy on Binance and deposit to this address</div>
+      </div>
+    </a>
+
+  </div>
+
+</section>
+
+
+<script>
+// ─────────────────────────────────────────────
+//  State
+// ─────────────────────────────────────────────
+let currentData = {
+  symbol:   '',
+  name:     '',
+  network:  '',
+  address:  '',
+  qr_code:  '',
+  explorer: '',
+};
+
+// ─────────────────────────────────────────────
+//  Network selection
+// ─────────────────────────────────────────────
+async function selectCrypto(symbol) {
+  document.getElementById('networkSelector').classList.add('hidden');
+  document.getElementById('addressView').classList.remove('hidden');
+
+  // show loading state
+  document.getElementById('cryptoSymbol').textContent   = symbol;
+  document.getElementById('cryptoName').textContent     = 'Loading…';
+  document.getElementById('cryptoNetwork').textContent  = '';
+  document.getElementById('warnSymbol').textContent     = symbol;
+  document.getElementById('addressDisplay').textContent = 'Loading address…';
+  document.getElementById('qrImage').src = '';
+
+  try {
+    const res  = await fetch(`/api/receive/${symbol}`);
+    const data = await res.json();
+
+    if (data.error) {
+      throw new Error(data.error);
+    }
+
+    currentData = data;
+
+    // populate UI
+    document.getElementById('cryptoSymbol').textContent  = data.symbol;
+    document.getElementById('cryptoName').textContent    = data.name;
+    document.getElementById('cryptoNetwork').textContent = data.network;
+    document.getElementById('warnSymbol').textContent    = data.symbol;
+    document.getElementById('addressDisplay').textContent= data.address;
+    document.getElementById('qrImage').src = data.qr_code;
+    document.getElementById('explorerLink').href = data.explorer;
+
+  } catch(e) {
+    console.error('Failed to load address:', e);
+    document.getElementById('addressDisplay').textContent =
+      'Error loading address. Please try again.';
+    document.getElementById('cryptoName').textContent = 'Error';
+  }
+}
+
+function backToSelector() {
+  document.getElementById('addressView').classList.add('hidden');
+  document.getElementById('networkSelector').classList.remove('hidden');
+  document.getElementById('copyFeedback').classList.remove('show');
+}
+
+// ─────────────────────────────────────────────
+//  Copy address
+// ─────────────────────────────────────────────
+async function copyAddress() {
+  const address = currentData.address;
+  if (!address) return;
+
+  try {
+    await navigator.clipboard.writeText(address);
+    showCopyFeedback();
+  } catch(e) {
+    // fallback for older browsers
+    const textarea = document.createElement('textarea');
+    textarea.value = address;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+    showCopyFeedback();
+  }
+}
+
+function showCopyFeedback() {
+  const feedback = document.getElementById('copyFeedback');
+  feedback.classList.add('show');
+  setTimeout(() => feedback.classList.remove('show'), 2500);
+}
+
+// ─────────────────────────────────────────────
+//  Share (Web Share API)
+// ─────────────────────────────────────────────
+async function shareAddress() {
+  const address = currentData.address;
+  const name    = currentData.name;
+
+  if (!address) return;
+
+  // Check if Web Share API is available
+  if (!navigator.share) {
+    // fallback — just copy
+    copyAddress();
+    return;
+  }
+
+  try {
+    // convert QR code data URI to blob
+    const qrDataUri = currentData.qr_code;
+    const blob = await (await fetch(qrDataUri)).blob();
+    const file = new File([blob], `${currentData.symbol}-address-qr.png`, {
+      type: 'image/png'
+    });
+
+    await navigator.share({
+      title: `${name} Deposit Address`,
+      text:  `Send ${currentData.symbol} to:\n${address}`,
+      files: [file],
+    });
+
+  } catch(e) {
+    // If share fails or user cancels, fall back to copy
+    if (e.name !== 'AbortError') {
+      console.warn('Share failed:', e);
+      copyAddress();
+    }
+  }
+}
+</script>
+
+{% endblock %}

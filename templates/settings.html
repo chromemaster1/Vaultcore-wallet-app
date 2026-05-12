@@ -1,0 +1,316 @@
+{% extends "base.html" %}
+{% block title %}Settings — VaultCore Wallet{% endblock %}
+
+{% block content %}
+
+<div class="settings-wrapper">
+
+  <h1 class="settings-title">Settings</h1>
+
+  <div class="settings-grid">
+
+    <!-- PROFILE -->
+    <div class="settings-card" onclick="openSection('profileSection')">
+      <h3>Profile</h3>
+      <p>Edit your account information</p>
+    </div>
+
+    <!-- NOTIFICATIONS -->
+    <div class="settings-card" onclick="openSection('notificationSection')">
+      <h3>Notifications</h3>
+      <p>View updates and messages</p>
+    </div>
+
+    <!-- SECURITY -->
+    <div class="settings-card" onclick="openSection('securitySection')">
+      <h3>Security</h3>
+      <p>Password & 2FA settings</p>
+    </div>
+
+    <!-- SUPPORT -->
+    <div class="settings-card" onclick="window.location.href='/support'">
+      <h3>Support</h3>
+      <p>Chat with our support team</p>
+    </div>
+
+    <!-- SYNC BANK -->
+    <div class="settings-card" onclick="window.location.href='/withdraw#link-bank'">
+      <h3>Sync Bank</h3>
+      <p>Connect your bank account</p>
+    </div>
+
+    <!-- ABOUT -->
+    <div class="settings-card" onclick="window.location.href='/about'">
+      <h3>About</h3>
+      <p>Learn more about the wallet</p>
+    </div>
+
+    {% if role == "admin" %}
+    <!-- ADMIN -->
+    <div class="settings-card admin-card" onclick="toggleSection('adminSection')">
+      <h3>Admin Dashboard</h3>
+      <p>System controls & manual overrides</p>
+    </div>
+    {% endif %}
+
+  </div>
+
+  <!-- EXPANDABLE SECTIONS -->
+
+  <!-- PROFILE -->
+  <div id="profileSection" class="settings-panel">
+    <h2>Profile</h2>
+    <form id="profileForm" onsubmit="updateProfile(event)">
+      <label>Full name</label>
+      <input id="profileFullName" placeholder="Full name">
+      <label>Email</label>
+      <input id="profileEmail" placeholder="Email">
+      <label>Profile photo</label>
+      <input id="profilePhoto" type="file" accept="image/*">
+      <div style="margin-top:8px">
+        <button type="submit">Update profile</button>
+        <button type="button" onclick="uploadPhoto()">Upload photo</button>
+      </div>
+      <div id="profileMsg" style="margin-top:8px;color:green"></div>
+    </form>
+  </div>
+
+  <!-- NOTIFICATIONS -->
+  <div id="notificationSection" class="settings-panel">
+    <h2>Notifications</h2>
+    <div id="notificationList"></div>
+  </div>
+
+  <!-- SECURITY -->
+  <div id="securitySection" class="settings-panel">
+    <h2>Security</h2>
+
+    <h3>Change password</h3>
+    <form id="passwordForm" onsubmit="changePassword(event)">
+      <input id="currentPassword" type="password" placeholder="Current password">
+      <input id="newPassword" type="password" placeholder="New password">
+      <input id="confirmNewPassword" type="password" placeholder="Confirm new password">
+      <button type="submit">Change password</button>
+      <div id="pwMsg" style="margin-top:8px;color:green"></div>
+    </form>
+
+    <hr />
+    <h3>Two-factor authentication (2FA)</h3>
+    <div id="twofaArea">
+      <button id="btnEnable2FA" onclick="startEnable2FA()">Enable 2FA</button>
+      <button id="btnDisable2FA" onclick="startDisable2FA()">Disable 2FA</button>
+      <div id="twofaBox" style="margin-top:8px;display:none">
+        <div id="twofaSecret"></div>
+        <label>Enter code from authenticator</label>
+        <input id="twofaCode" placeholder="123456">
+        <button onclick="confirm2FA()">Confirm</button>
+        <div id="twofaMsg" style="margin-top:8px;color:green"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADMIN -->
+  {% if role == "admin" %}
+  <div id="adminSection" class="settings-panel">
+    <button class="btn-close-panel" onclick="closeSection('adminSection')">✕</button>
+    <h2>Admin Dashboard</h2>
+    <button onclick="manualTx()">Manual Transaction</button>
+    <button onclick="openWalletHashEditor()">Set Wallet Hash</button>
+
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+function toggleSection(id) {
+  const section = document.getElementById(id);
+  if (!section) return;
+  // if already active, close it
+  if (section.classList.contains('active')) {
+    section.classList.remove('active');
+    return;
+  }
+  // otherwise open only this one
+  document.querySelectorAll('.settings-panel').forEach(s => s.classList.remove('active'));
+  section.classList.add('active');
+  try { section.scrollIntoView({behavior: 'smooth', block: 'start'}); } catch(e) {}
+}
+
+function closeSection(id) {
+  const section = document.getElementById(id);
+  if (!section) return;
+  section.classList.remove('active');
+}
+
+function openSection(id) {
+  const section = document.getElementById(id);
+  if (!section) return;
+  // close others
+  document.querySelectorAll('.settings-panel').forEach(s => s.classList.remove('active'));
+  section.classList.add('active');
+  try { section.scrollIntoView({behavior: 'smooth', block: 'start'}); } catch(e) {}
+}
+
+// Helpers
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('visible'); setTimeout(()=>t.classList.remove('visible'),4000);
+}
+
+async function loadProfile(){
+  try{
+    const res = await fetch('/api/settings/profile');
+    if(!res.ok) throw new Error('Failed to load profile');
+    const d = await res.json();
+    document.getElementById('profileEmail').value = d.email || '';
+    document.getElementById('profileFullName').value = d.full_name || '';
+  }catch(e){console.debug(e)}
+}
+
+async function updateProfile(e){
+  e.preventDefault();
+  const email = document.getElementById('profileEmail').value.trim();
+  const full_name = document.getElementById('profileFullName').value.trim();
+  try{
+    const res = await fetch('/api/settings/profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,full_name})});
+    const j = await res.json();
+    if(!res.ok) throw new Error(j.error||'Update failed');
+    document.getElementById('profileMsg').textContent = 'Profile updated.';
+    showToast('Profile updated');
+    // close profile panel after success
+    setTimeout(()=> closeSection('profileSection'), 600);
+  }catch(e){ document.getElementById('profileMsg').textContent = e.message; }
+}
+
+async function uploadPhoto(){
+  const inp = document.getElementById('profilePhoto');
+  if(!inp.files || !inp.files[0]) return showToast('Select a photo first');
+  const fd = new FormData(); fd.append('photo', inp.files[0]);
+  try{
+    const res = await fetch('/api/settings/profile/photo',{method:'POST',body:fd});
+    const j = await res.json();
+    if(!res.ok) throw new Error(j.error||'Upload failed');
+    showToast('Photo uploaded');
+  }catch(e){ showToast(e.message); }
+}
+
+async function changePassword(e){
+  e.preventDefault();
+  const current = document.getElementById('currentPassword').value;
+  const newpw = document.getElementById('newPassword').value;
+  const confirm = document.getElementById('confirmNewPassword').value;
+  if(newpw !== confirm) return document.getElementById('pwMsg').textContent = 'Passwords do not match.';
+  try{
+    const res = await fetch('/api/settings/password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:current,new_password:newpw})});
+    const j = await res.json();
+    if(!res.ok) throw new Error(j.error||'Change failed');
+    document.getElementById('pwMsg').textContent = 'Password changed.';
+    showToast('Password changed');
+    setTimeout(()=> closeSection('securitySection'), 600);
+  }catch(e){ document.getElementById('pwMsg').textContent = e.message; }
+}
+
+// 2FA flows
+let pending2FASecret = null;
+async function startEnable2FA(){
+  try{
+    const res = await fetch('/api/settings/2fa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'create'})});
+    const j = await res.json();
+    if(!res.ok) throw new Error(j.error||'Failed');
+    pending2FASecret = j.secret;
+    document.getElementById('twofaSecret').textContent = 'Secret: ' + j.secret;
+    document.getElementById('twofaBox').style.display = 'block';
+  }catch(e){ showToast(e.message); }
+}
+
+async function confirm2FA(){
+  const code = document.getElementById('twofaCode').value.trim();
+  if(!code) return showToast('Enter code');
+  try{
+    const res = await fetch('/api/settings/2fa',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'confirm',code})});
+    const j = await res.json();
+    if(!res.ok) throw new Error(j.error||'Failed');
+    document.getElementById('twofaMsg').textContent = '2FA enabled.';
+    document.getElementById('twofaBox').style.display = 'none';
+    showToast('2FA enabled');
+    setTimeout(()=> closeSection('securitySection'), 600);
+  }catch(e){ document.getElementById('twofaMsg').textContent = e.message; }
+}
+
+async function startDisable2FA(){
+  document.getElementById('twofaBox').style.display = 'block';
+  document.getElementById('twofaSecret').textContent = '';
+}
+
+// init
+document.addEventListener('DOMContentLoaded', loadProfile);
+
+// Admin: Wallet hash editor
+async function openWalletHashEditor(){
+  // open adminSection
+  openSection('adminSection');
+  // create modal if missing
+  if(!document.getElementById('walletHashModal')){
+    const modal = document.createElement('div');
+    modal.id = 'walletHashModal';
+    modal.className = 'modal-overlay open';
+    modal.innerHTML = `
+      <div class="modal-box">
+        <div class="modal-header"><h3>Wallet Hashes</h3><button onclick="closeWalletHashEditor()">Close</button></div>
+        <div class="modal-body" id="walletHashBody">Loading…</div>
+      </div>`;
+    document.body.appendChild(modal);
+  } else {
+    document.getElementById('walletHashModal').classList.add('open');
+  }
+  // load data
+  try{
+    const res = await fetch('/api/admin/wallet-hashes');
+    if(!res.ok) throw new Error('Failed to load');
+    const data = await res.json();
+    const body = document.getElementById('walletHashBody');
+    // build form rows for all known networks
+    const networks = {{ networks.keys()|list|tojson }};
+    const rows = networks.map(sym => {
+      const existing = (data || []).find(d => d.symbol === sym) || {};
+      return `<div class="wh-row">
+        <label>${sym}</label>
+        <input data-sym="${sym}" class="wh-input" value="${existing.address||''}" placeholder="address or hash" />
+        <input data-sym-note="${sym}" class="wh-note" value="${existing.note||''}" placeholder="note (optional)" />
+      </div>`;
+    }).join('');
+    body.innerHTML = `<div>${rows}</div><div style="margin-top:8px"><button onclick="saveWalletHashes()">Save changes</button></div>`;
+  }catch(e){
+    console.error(e);
+    document.getElementById('walletHashBody').textContent = 'Failed to load.';
+  }
+}
+
+function closeWalletHashEditor(){
+  const m = document.getElementById('walletHashModal');
+  if(m) m.remove();
+}
+
+async function saveWalletHashes(){
+  const inputs = Array.from(document.querySelectorAll('.wh-input'));
+  for(const inp of inputs){
+    const sym = inp.dataset.sym;
+    const addr = inp.value.trim();
+    const noteEl = document.querySelector(`.wh-note[data-sym-note="${sym}"]`);
+    const note = noteEl ? noteEl.value.trim() : '';
+    if(!addr) continue; // skip empty
+    try{
+      const res = await fetch('/api/admin/wallet-hash',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({symbol:sym,address:addr,note})});
+      const j = await res.json();
+      if(!res.ok) throw new Error(j.error||'Save failed');
+    }catch(e){
+      showToast('Failed to save ' + sym + ': ' + e.message);
+      return;
+    }
+  }
+  showToast('Wallet hashes saved');
+  closeWalletHashEditor();
+}
+</script>
+{% endblock %}

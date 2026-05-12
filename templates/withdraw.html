@@ -1,0 +1,734 @@
+{% extends "base.html" %}
+{% block title %}Withdraw — VaultCore Wallet{% endblock %}
+
+{% block content %}
+
+<section class="withdraw-page">
+
+  <!-- ═══ Page Header ═══ -->
+  <div class="withdraw-header">
+    <h2 class="page-title">Withdraw to Bank</h2>
+    <p class="page-sub">Transfer crypto to your local bank account</p>
+  </div>
+
+  <!-- ═══ Method Selector ═══ -->
+  <div class="method-tabs">
+    <button class="method-tab active" onclick="switchMethod('manual')" id="tabManual">
+      Manual Transfer
+    </button>
+    <button class="method-tab" onclick="switchMethod('linked')" id="tabLinked">
+      {% if linked_bank %}
+        Linked Bank
+      {% else %}
+        Link Bank
+      {% endif %}
+    </button>
+    <a href="{{ url_for('p2p_market') }}" class="method-tab p2p-tab">
+      P2P Trading
+    </a>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════
+       MANUAL TRANSFER FORM
+  ═══════════════════════════════════════════ -->
+  <div id="manualForm" class="method-panel active">
+
+    <!-- Country + Currency -->
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Country</label>
+        <select id="countrySelect" class="form-select" onchange="onCountryChange()">
+          <option value="">Select country…</option>
+          {% for code, info in countries.items() %}
+          <option value="{{ code }}" data-currency="{{ info.currency }}" data-symbol="{{ info.symbol }}">
+            {{ info.name }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Currency</label>
+        <input type="text" id="currencyDisplay" class="form-input" readonly value="" placeholder="Auto-set" />
+      </div>
+    </div>
+
+    <!-- Bank Type Toggle -->
+    <div class="bank-type-toggle">
+      <button class="toggle-btn active" id="btnLocal" onclick="setBankType('local')">
+        Local Bank
+      </button>
+      <button class="toggle-btn" id="btnInternational" onclick="setBankType('international')">
+        International Bank
+      </button>
+    </div>
+
+    <!-- Bank Selection (local) -->
+    <div id="localBankFields">
+      <div class="form-group">
+        <label class="form-label">Select Bank</label>
+        <input type="text" id="bankSearch" class="form-input"
+               placeholder="Search for your bank…"
+               oninput="filterBanks()" />
+        <div class="bank-dropdown" id="bankDropdown" style="display:none"></div>
+        <input type="hidden" id="selectedBankCode" />
+        <input type="hidden" id="selectedBankName" />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Account Number</label>
+        <input type="text" id="accountNumber" class="form-input"
+               placeholder="Enter 10-digit account number"
+               maxlength="12"
+               oninput="onAccountNumberInput()" />
+        <div class="account-name-display" id="accountNameDisplay" style="display:none">
+          <span class="check-icon">✓</span>
+          <span class="account-name-text" id="accountNameText"></span>
+        </div>
+        <div class="form-error" id="accountError"></div>
+      </div>
+    </div>
+
+    <!-- Bank Selection (international) -->
+    <div id="internationalBankFields" style="display:none">
+      <div class="form-group">
+        <label class="form-label">Bank Name</label>
+        <input type="text" id="intlBankName" class="form-input"
+               placeholder="e.g., Bank of America" />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Account Number / IBAN</label>
+        <input type="text" id="intlAccountNumber" class="form-input"
+               placeholder="Enter account number or IBAN" />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Account Holder Name</label>
+        <input type="text" id="intlAccountName" class="form-input"
+               placeholder="Full name as registered" />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">SWIFT / BIC Code (optional)</label>
+        <input type="text" id="swiftCode" class="form-input"
+               placeholder="e.g., BOFAUS3N" />
+      </div>
+    </div>
+
+    <!-- Amount -->
+    <div class="form-group">
+      <label class="form-label">
+        Amount (<span id="amountCurrency">USD</span>)
+      </label>
+      <div class="amount-input-wrap">
+        <input type="text" id="withdrawAmount" class="form-input amount-input"
+               inputmode="decimal"
+               placeholder="0.00"
+               oninput="calculateUSDT()" />
+        <button class="btn-max-amount" onclick="setMaxAmount()">Max</button>
+      </div>
+      <div class="conversion-display" id="conversionDisplay"></div>
+      <div class="form-error" id="amountError"></div>
+    </div>
+
+    <!-- Submit -->
+    <button class="btn-submit" id="btnSubmitManual" onclick="submitManualWithdraw()">
+      Withdraw to Bank
+    </button>
+
+    <div class="result-box" id="manualResult"></div>
+  </div>
+
+
+  <!-- ══════════════════════════════════════════
+       LINKED BANK PANEL
+  ═══════════════════════════════════════════ -->
+  <div id="linkedForm" class="method-panel">
+
+    {% if linked_bank %}
+    <!-- Bank already linked — show quick withdraw -->
+    <div class="linked-bank-card">
+      <div class="linked-bank-icon">🏦</div>
+      <div class="linked-bank-info">
+        <div class="linked-bank-name">{{ linked_bank.bank_name }}</div>
+        <div class="linked-bank-account">****{{ linked_bank.account_last4 }}</div>
+      </div>
+      <button class="btn-unlink" onclick="unlinkBank()">Unlink</button>
+    </div>
+
+    <div class="balance-display-linked">
+      <div class="balance-label">Available USDT</div>
+      <div class="balance-value" id="linkedBalanceValue">—</div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Amount (USDT)</label>
+      <div class="amount-input-wrap">
+        <input type="text" id="linkedAmount" class="form-input amount-input"
+               inputmode="decimal"
+               placeholder="0.00"
+               oninput="updateLinkedConversion()" />
+        <button class="btn-max-amount" onclick="setLinkedMax()">Max</button>
+      </div>
+      <div class="conversion-display" id="linkedConversion"></div>
+      <div class="form-error" id="linkedAmountError"></div>
+    </div>
+
+    <button class="btn-submit" id="btnSubmitLinked" onclick="submitLinkedWithdraw()">
+      Send to Linked Bank
+    </button>
+
+    <div class="result-box" id="linkedResult"></div>
+
+    {% else %}
+    <!-- No bank linked — show linking form -->
+    <div class="link-bank-card">
+      <div class="link-bank-icon">🔗</div>
+      <h3 class="link-bank-title">Link Your Bank Account</h3>
+      <p class="link-bank-desc">
+        Connect your mobile banking app for instant withdrawals.
+        We use bank-level encryption to keep your credentials safe.
+      </p>
+
+      <div class="form-group">
+        <label class="form-label">Select Your Bank</label>
+        <select id="linkBankSelect" class="form-select">
+          <option value="">Choose bank…</option>
+          <!-- Populated via JS based on user's country -->
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Online Banking Username</label>
+        <input type="text" id="linkUsername" class="form-input"
+               placeholder="Your banking app username" autocomplete="off" />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Online Banking Password</label>
+        <input type="password" id="linkPassword" class="form-input"
+               placeholder="Your banking app password" autocomplete="off" />
+        <div class="security-note">
+          🔒 We never store your password. Authentication happens directly with your bank.
+        </div>
+      </div>
+
+      <button class="btn-submit" id="btnLinkBank" onclick="submitLinkBank()">
+        Authenticate & Link Bank
+      </button>
+
+      <div class="result-box" id="linkResult"></div>
+    </div>
+    {% endif %}
+
+  </div>
+
+</section>
+
+
+<script>
+// ─────────────────────────────────────────────
+//  State
+// ─────────────────────────────────────────────
+let state = {
+  country: '',
+  currency: 'USD',
+  symbol: '$',
+  bankType: 'local',
+  bankCode: '',
+  bankName: '',
+  accountName: '',
+  banks: [],
+  usdtBalance: 0,
+  exchangeRate: 1.0,
+};
+
+const RATES = {{ exchange_rates|tojson }};
+
+// ─────────────────────────────────────────────
+//  Method Switching
+// ─────────────────────────────────────────────
+function switchMethod(method) {
+  document.querySelectorAll('.method-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.method-panel').forEach(p => p.classList.remove('active'));
+
+  if (method === 'manual') {
+    document.getElementById('tabManual').classList.add('active');
+    document.getElementById('manualForm').classList.add('active');
+  } else {
+    document.getElementById('tabLinked').classList.add('active');
+    document.getElementById('linkedForm').classList.add('active');
+    loadLinkedBalance();
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Manual Form — Country Selection
+// ─────────────────────────────────────────────
+function onCountryChange() {
+  const sel = document.getElementById('countrySelect');
+  const opt = sel.options[sel.selectedIndex];
+
+  state.country  = sel.value;
+  state.currency = opt.dataset.currency || 'USD';
+  state.symbol   = opt.dataset.symbol || '$';
+  state.exchangeRate = RATES[state.currency] || 1.0;
+
+  document.getElementById('currencyDisplay').value = state.currency;
+  document.getElementById('amountCurrency').textContent = state.currency;
+
+  // Load banks for this country
+  loadBanks(state.country);
+
+  // Reset fields
+  document.getElementById('bankSearch').value = '';
+  document.getElementById('selectedBankCode').value = '';
+  document.getElementById('selectedBankName').value = '';
+  document.getElementById('accountNumber').value = '';
+  document.getElementById('accountNameDisplay').style.display = 'none';
+}
+
+async function loadBanks(countryCode) {
+  if (!countryCode) return;
+  try {
+    const res = await fetch(`/api/banks/${countryCode}`);
+    state.banks = await res.json();
+  } catch(e) {
+    console.error('Failed to load banks:', e);
+    state.banks = [];
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Bank Type Toggle
+// ─────────────────────────────────────────────
+function setBankType(type) {
+  state.bankType = type;
+  document.getElementById('btnLocal').classList.toggle('active', type === 'local');
+  document.getElementById('btnInternational').classList.toggle('active', type === 'international');
+  document.getElementById('localBankFields').style.display = type === 'local' ? 'block' : 'none';
+  document.getElementById('internationalBankFields').style.display = type === 'international' ? 'block' : 'none';
+}
+
+// ─────────────────────────────────────────────
+//  Bank Search + Selection (local)
+// ─────────────────────────────────────────────
+function filterBanks() {
+  const query = document.getElementById('bankSearch').value.toLowerCase();
+  const dropdown = document.getElementById('bankDropdown');
+
+  if (!query || !state.banks.length) {
+    dropdown.style.display = 'none';
+    return;
+  }
+
+  const filtered = state.banks.filter(b =>
+    b.name.toLowerCase().includes(query)
+  );
+
+  if (!filtered.length) {
+    dropdown.style.display = 'none';
+    return;
+  }
+
+  dropdown.innerHTML = filtered.map(b =>
+    `<div class="bank-option" onclick="selectBank('${b.code}', '${b.name}')">
+       ${b.name}
+     </div>`
+  ).join('');
+  dropdown.style.display = 'block';
+}
+
+function selectBank(code, name) {
+  document.getElementById('bankSearch').value = name;
+  document.getElementById('selectedBankCode').value = code;
+  document.getElementById('selectedBankName').value = name;
+  document.getElementById('bankDropdown').style.display = 'none';
+
+  state.bankCode = code;
+  state.bankName = name;
+
+  // Reset account verification
+  document.getElementById('accountNameDisplay').style.display = 'none';
+  document.getElementById('accountError').textContent = '';
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', e => {
+  if (!e.target.closest('.form-group')) {
+    document.getElementById('bankDropdown').style.display = 'none';
+  }
+});
+
+// ─────────────────────────────────────────────
+//  Account Name Resolution
+// ─────────────────────────────────────────────
+let resolveTimeout = null;
+
+function onAccountNumberInput() {
+  clearTimeout(resolveTimeout);
+  const accNum = document.getElementById('accountNumber').value.trim();
+
+  document.getElementById('accountNameDisplay').style.display = 'none';
+  document.getElementById('accountError').textContent = '';
+
+  if (accNum.length < 10) return;
+  if (!/^\d+$/.test(accNum)) {
+    document.getElementById('accountError').textContent = 'Account number must contain only digits.';
+    return;
+  }
+
+  if (!state.bankCode) {
+    document.getElementById('accountError').textContent = 'Please select a bank first.';
+    return;
+  }
+
+  resolveTimeout = setTimeout(() => resolveAccount(accNum), 800);
+}
+
+async function resolveAccount(accNum) {
+  try {
+    const res = await fetch('/api/resolve-account', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        country: state.country,
+        bank_code: state.bankCode,
+        account_number: accNum,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      document.getElementById('accountError').textContent = data.error || 'Could not verify account.';
+      return;
+    }
+
+    state.accountName = data.account_name;
+    document.getElementById('accountNameText').textContent = data.account_name;
+    document.getElementById('accountNameDisplay').style.display = 'flex';
+
+  } catch(e) {
+    document.getElementById('accountError').textContent = 'Network error. Please try again.';
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Amount + Conversion
+// ─────────────────────────────────────────────
+async function loadUSDTBalance() {
+  try {
+    const res = await fetch('/api/usdt-balance');
+    const data = await res.json();
+    state.usdtBalance = data.balance;
+  } catch(e) {
+    console.error('Failed to load balance:', e);
+  }
+}
+
+function calculateUSDT() {
+  const local = parseFloat(document.getElementById('withdrawAmount').value) || 0;
+  const usdt = local / state.exchangeRate;
+
+  if (local > 0) {
+    document.getElementById('conversionDisplay').innerHTML =
+      `≈ <strong>${usdt.toFixed(4)} USDT</strong>`;
+  } else {
+    document.getElementById('conversionDisplay').innerHTML = '';
+  }
+
+  document.getElementById('amountError').textContent = '';
+}
+
+function setMaxAmount() {
+  const maxLocal = state.usdtBalance * state.exchangeRate;
+  document.getElementById('withdrawAmount').value = maxLocal.toFixed(2);
+  calculateUSDT();
+}
+
+// ─────────────────────────────────────────────
+//  Submit Manual Withdraw
+// ─────────────────────────────────────────────
+async function submitManualWithdraw() {
+  const btn = document.getElementById('btnSubmitManual');
+  const result = document.getElementById('manualResult');
+
+  result.innerHTML = '';
+  document.getElementById('amountError').textContent = '';
+
+  // Validation
+  if (!state.country) {
+    document.getElementById('amountError').textContent = 'Please select a country.';
+    return;
+  }
+
+  const amount = parseFloat(document.getElementById('withdrawAmount').value);
+  if (!amount || amount <= 0) {
+    document.getElementById('amountError').textContent = 'Please enter a valid amount.';
+    return;
+  }
+
+  let payload = {
+    method: 'manual',
+    country: state.country,
+    currency: state.currency,
+    amount: amount,
+  };
+
+  if (state.bankType === 'local') {
+    if (!state.bankCode || !state.accountName) {
+      document.getElementById('accountError').textContent = 'Please verify your account details.';
+      return;
+    }
+    payload.bank_code = state.bankCode;
+    payload.account_number = document.getElementById('accountNumber').value;
+    payload.account_name = state.accountName;
+  } else {
+    const intlBank = document.getElementById('intlBankName').value.trim();
+    const intlAccNum = document.getElementById('intlAccountNumber').value.trim();
+    const intlName = document.getElementById('intlAccountName').value.trim();
+
+    if (!intlBank || !intlAccNum || !intlName) {
+      document.getElementById('amountError').textContent = 'Please fill all international bank fields.';
+      return;
+    }
+
+    payload.bank_code = 'INTL';
+    payload.bank_name = intlBank;
+    payload.account_number = intlAccNum;
+    payload.account_name = intlName;
+    payload.swift = document.getElementById('swiftCode').value.trim();
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Processing…';
+
+  try {
+    const res = await fetch('/api/withdraw-to-bank', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      if (data.error_type === 'insufficient_balance') {
+        document.getElementById('amountError').textContent = data.error;
+      } else {
+        result.innerHTML = `<div class="result-error">${data.error}</div>`;
+      }
+      return;
+    }
+
+    result.innerHTML = `
+      <div class="result-success">
+        <div class="success-icon">✓</div>
+        <div class="success-title">Withdrawal Initiated</div>
+        <div class="success-msg">${data.message}</div>
+        <div class="success-details">
+          <div class="detail-row">
+            <span>Amount:</span>
+            <span>${data.amount_local.toLocaleString()} ${data.currency}</span>
+          </div>
+          <div class="detail-row">
+            <span>Equivalent:</span>
+            <span>${data.amount_usdt.toFixed(4)} USDT</span>
+          </div>
+          <div class="detail-row">
+            <span>Bank:</span>
+            <span>${data.bank_name}</span>
+          </div>
+          <div class="detail-row">
+            <span>Tx ID:</span>
+            <span class="tx-id">${data.tx_id}</span>
+          </div>
+        </div>
+      </div>`;
+
+    // Reload balance
+    loadUSDTBalance();
+
+  } catch(e) {
+    result.innerHTML = `<div class="result-error">Network error. Please try again.</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Withdraw to Bank';
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Linked Bank — Load Balance
+// ─────────────────────────────────────────────
+async function loadLinkedBalance() {
+  try {
+    const res = await fetch('/api/usdt-balance');
+    const data = await res.json();
+    document.getElementById('linkedBalanceValue').textContent =
+      `${data.balance.toFixed(2)} USDT`;
+    state.usdtBalance = data.balance;
+  } catch(e) {
+    document.getElementById('linkedBalanceValue').textContent = 'Error';
+  }
+}
+
+function updateLinkedConversion() {
+  const usdt = parseFloat(document.getElementById('linkedAmount').value) || 0;
+  // Assume conversion to user's default currency (could be selected)
+  const local = usdt * state.exchangeRate;
+
+  if (usdt > 0) {
+    document.getElementById('linkedConversion').innerHTML =
+      `≈ <strong>${local.toFixed(2)} ${state.currency}</strong>`;
+  } else {
+    document.getElementById('linkedConversion').innerHTML = '';
+  }
+}
+
+function setLinkedMax() {
+  document.getElementById('linkedAmount').value = state.usdtBalance.toFixed(2);
+  updateLinkedConversion();
+}
+
+// ─────────────────────────────────────────────
+//  Submit Linked Withdraw
+// ─────────────────────────────────────────────
+async function submitLinkedWithdraw() {
+  const btn = document.getElementById('btnSubmitLinked');
+  const result = document.getElementById('linkedResult');
+  const errEl = document.getElementById('linkedAmountError');
+
+  result.innerHTML = '';
+  errEl.textContent = '';
+
+  const amount = parseFloat(document.getElementById('linkedAmount').value);
+  if (!amount || amount <= 0) {
+    errEl.textContent = 'Please enter a valid amount.';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+
+  try {
+    const res = await fetch('/api/withdraw-to-bank', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        method: 'linked',
+        currency: 'USD',  // linked withdrawals use USDT directly
+        amount: amount,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      errEl.textContent = data.error;
+      return;
+    }
+
+    result.innerHTML = `
+      <div class="result-success">
+        <div class="success-icon">✓</div>
+        <div class="success-title">Sent to Bank</div>
+        <div class="success-msg">${data.message}</div>
+        <div class="success-details">
+          <div class="detail-row">
+            <span>Tx ID:</span>
+            <span class="tx-id">${data.tx_id}</span>
+          </div>
+        </div>
+      </div>`;
+
+    loadLinkedBalance();
+
+  } catch(e) {
+    result.innerHTML = `<div class="result-error">Network error.</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Send to Linked Bank';
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Link Bank Flow
+// ─────────────────────────────────────────────
+async function submitLinkBank() {
+  const btn = document.getElementById('btnLinkBank');
+  const result = document.getElementById('linkResult');
+
+  result.innerHTML = '';
+
+  const bankSel = document.getElementById('linkBankSelect');
+  const bankCode = bankSel.value;
+  const bankName = bankSel.options[bankSel.selectedIndex].text;
+  const username = document.getElementById('linkUsername').value.trim();
+  const password = document.getElementById('linkPassword').value.trim();
+
+  if (!bankCode || !username || !password) {
+    result.innerHTML = '<div class="result-error">All fields are required.</div>';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Authenticating…';
+
+  try {
+    const res = await fetch('/api/link-bank', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({bank_code: bankCode, bank_name: bankName, username, password}),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      result.innerHTML = `<div class="result-error">${data.error}</div>`;
+      return;
+    }
+
+    // Success — reload page to show linked state
+    window.location.reload();
+
+  } catch(e) {
+    result.innerHTML = '<div class="result-error">Network error.</div>';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Authenticate & Link Bank';
+  }
+}
+
+async function unlinkBank() {
+  if (!confirm('Unlink your bank account?')) return;
+
+  try {
+    await fetch('/api/unlink-bank', {method: 'POST'});
+    window.location.reload();
+  } catch(e) {
+    alert('Failed to unlink bank.');
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Init
+// ─────────────────────────────────────────────
+loadUSDTBalance();
+
+// Pre-populate link bank dropdown if on that tab
+{% if not linked_bank %}
+(async () => {
+  // Default to first country for bank linking demo
+  const defaultCountry = 'NG';
+  const res = await fetch(`/api/banks/${defaultCountry}`);
+  const banks = await res.json();
+  const sel = document.getElementById('linkBankSelect');
+  sel.innerHTML = '<option value="">Choose bank…</option>' +
+    banks.map(b => `<option value="${b.code}">${b.name}</option>`).join('');
+})();
+{% endif %}
+</script>
+
+{% endblock %}

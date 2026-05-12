@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}Register — VaultCore Wallet{% endblock %}
+
+{% block content %}
+
+<!-- Welcome Text -->
+<div class="auth-welcome">
+    <h1 class="auth-title">Create Your Account</h1>
+    <p class="auth-subtitle">Join VaultCore Wallet to securely manage your crypto</p>
+</div>
+
+<!-- Register Card -->
+<div class="auth-card">
+
+    <form id="registerForm" onsubmit="submitRegister(event)">
+
+        <div class="form-group">
+            <label class="auth-label">Full Name</label>
+            <input type="text" id="fullName" class="auth-input"
+                   name="full_name"
+                   placeholder="John Doe"
+                   autocomplete="name"
+                   required />
+            <div class="auth-error" id="nameError"></div>
+        </div>
+
+        <div class="form-group">
+            <label class="auth-label">Email Address</label>
+            <input type="email" id="email" class="auth-input"
+                   name="email"
+                   placeholder="you@example.com"
+                   autocomplete="email"
+                   required />
+            <div class="auth-error" id="emailError"></div>
+        </div>
+
+        <div class="form-group">
+            <label class="auth-label">Password</label>
+            <div class="password-wrap">
+                <input type="password" id="password" class="auth-input"
+                       name="password"
+                       placeholder="Create a strong password"
+                       autocomplete="new-password"
+                       required />
+                <button type="button" class="btn-toggle-password" onclick="togglePassword('password', this)">
+                    👁
+                </button>
+            </div>
+            <div class="password-hint">
+                At least 6 characters with letters and numbers
+            </div>
+            <div class="auth-error" id="passwordError"></div>
+        </div>
+
+        <button type="submit" class="btn-auth-primary" id="btnRegister">
+            Create Account
+        </button>
+
+    </form>
+
+    <div class="auth-divider">
+        <span>Already have an account?</span>
+    </div>
+
+    <a href="{{ url_for('login') }}" class="btn-auth-secondary">
+        Login Instead
+    </a>
+
+</div>
+
+<!-- Security Badge -->
+<div class="auth-security">
+    🔒 Secured with bank-level encryption
+</div>
+
+<script>
+async function submitRegister(event) {
+    event.preventDefault();
+
+    const fullName = document.getElementById('fullName').value.trim();
+    const email    = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value.trim();
+    const btn      = document.getElementById('btnRegister');
+
+    // Clear all errors
+    document.getElementById('nameError').textContent = '';
+    document.getElementById('emailError').textContent = '';
+    document.getElementById('passwordError').textContent = '';
+
+    btn.disabled    = true;
+    btn.textContent = 'Creating Account…';
+
+    console.log('Registration attempt:', { email, fullName });
+
+    try {
+        const res = await fetch('/api/register', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+                email: email,
+                password: password,
+                full_name: fullName,
+            }),
+        });
+
+        console.log('Registration response status:', res.status);
+
+        let data;
+        try {
+            data = await res.json();
+            console.log('Registration response data:', data);
+        } catch (parseError) {
+            console.error('Failed to parse response:', parseError);
+            const text = await res.text();
+            console.error('Response text:', text);
+            throw new Error('Server returned invalid JSON');
+        }
+
+        if (!res.ok) {
+            const errorField = data.field || 'passwordError';
+            const errorElement = document.getElementById(
+                errorField === 'email' ? 'emailError' :
+                errorField === 'full_name' ? 'nameError' :
+                'passwordError'
+            );
+            errorElement.textContent = data.error || 'Registration failed';
+
+            // If email exists, redirect to login
+            if (data.redirect) {
+                setTimeout(() => {
+                    window.location.href = data.redirect;
+                }, 2000);
+            }
+
+            btn.disabled    = false;
+            btn.textContent = 'Create Account';
+            return;
+        }
+
+        // Success - redirect to home
+        btn.textContent = 'Success! Redirecting…';
+        console.log('Registration successful, redirecting to:', data.redirect);
+
+        setTimeout(() => {
+            window.location.href = data.redirect;
+        }, 1000);
+
+    } catch(e) {
+        console.error('Registration error:', e);
+        document.getElementById('passwordError').textContent =
+            'Network error. Please check the console and try again. Error: ' + e.message;
+        btn.disabled    = false;
+        btn.textContent = 'Create Account';
+    }
+}
+
+function togglePassword(inputId, btn) {
+    const input = document.getElementById(inputId);
+    if (input.type === 'password') {
+        input.type = 'text';
+        btn.textContent = '👁‍🗨';
+    } else {
+        input.type = 'password';
+        btn.textContent = '👁';
+    }
+}
+</script>
+
+{% endblock %}

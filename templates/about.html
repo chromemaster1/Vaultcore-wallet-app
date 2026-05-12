@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}About — VaultCore Wallet{% endblock %}
+{% block content %}
+
+<section class="about-container">
+
+  <!-- ABOUT CARD -->
+  <div class="card">
+    <h1 class="card-title">About VaultCore Wallet</h1>
+    <p class="card-text">
+      VaultCore Wallet is a secure and user-friendly cryptocurrency wallet designed to help you manage your digital assets with ease.
+    </p>
+    <p class="card-text">
+      Whether you're a seasoned crypto enthusiast or just getting started, our wallet provides the tools you need to store, send, and receive cryptocurrencies safely.
+    </p>
+    <p class="card-text">
+      We prioritize security, privacy, and user experience while delivering a seamless crypto experience.
+    </p>
+  </div>
+
+  <!-- TEAM CARD -->
+  <div class="card">
+    <h2 class="card-title">Our Team</h2>
+    <p class="card-text">
+      We are a passionate team of developers, designers, and crypto enthusiasts committed to building a modern crypto experience.
+    </p>
+    <p class="card-text">
+      Our focus is continuous innovation, simplicity, and trust.
+    </p>
+  </div>
+
+  <!-- CONTACT INFO CARD -->
+  <div class="card">
+    <h2 class="card-title">Contact Us</h2>
+    <p class="card-text">
+      Have questions or feedback? Reach out to us anytime.
+    </p>
+    <p class="card-text">
+      Email: <a href="mailto:info@vaultcore.com">info@vaultcore.com</a>
+    </p>
+  </div>
+
+  <!-- CONTACT FORM CARD -->
+  <div class="card form-card">
+    <h2 class="card-title">Send a Message</h2>
+
+    <form id="contactForm">
+
+      <div class="form-group">
+        <label>Your Email</label>
+        <input type="email" id="contactEmail"
+               name="email"
+               placeholder="Enter your email"
+               required>
+      </div>
+
+      <div class="form-group">
+        <label>Your Message</label>
+        <textarea id="contactMessage"
+                  name="message"
+                  placeholder="Enter your message"
+                  required></textarea>
+      </div>
+
+      <button type="submit" class="btn-primary">
+        Send Message
+      </button>
+
+    </form>
+  </div>
+
+</section>
+
+<script>
+async function submitContact(event) {
+    event.preventDefault();
+
+    const email = document.getElementById("contactEmail").value;
+    const message = document.getElementById("contactMessage").value;
+
+    try {
+        const res = await fetch("/api/contact", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ email, message })
+        });
+
+        const data = await res.json();
+
+        if (data.success) {
+            showToast("Message sent successfully ✅", "success");
+
+            document.getElementById("contactForm").reset();
+        } else {
+            showToast(data.error || "Something went wrong", "error");
+        }
+
+    } catch (err) {
+        showToast("Network error. Try again.", "error");
+    }
+}
+</script>
+
+<script>
+function showToast(message, type = "success") {
+    const toast = document.getElementById("toast");
+
+    toast.textContent = message;
+    toast.className = `toast show ${type}`;
+
+    setTimeout(() => {
+        toast.classList.remove("show");
+    }, 3000);
+}
+</script>
+{% endblock %}

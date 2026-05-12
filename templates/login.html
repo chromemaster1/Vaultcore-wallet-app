@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}Login — VaultCore Wallet{% endblock %}
+
+{% block content %}
+
+<!-- Welcome Text -->
+    <div class="auth-welcome">
+        <h1 class="auth-title">Welcome Back</h1>
+        <p class="auth-subtitle">Login to access your wallet</p>
+    </div>
+
+    <!-- Login Card -->
+    <div class="auth-card">
+
+        <!-- Flash messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="flash-message flash-{{ category }}">
+                    {{ message }}
+                </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form id="loginForm" onsubmit="submitLogin(event)">
+
+            <div class="form-group">
+                <label class="auth-label">Email Address</label>
+                <input type="email" id="email" class="auth-input"
+                       name="email"
+                       placeholder="you@example.com"
+                       autocomplete="email"
+                       required />
+                <div class="auth-error" id="emailError"></div>
+            </div>
+
+            <div class="form-group">
+                <label class="auth-label">Password</label>
+                <div class="password-wrap">
+                    <input type="password" id="password" class="auth-input"
+                           name="password"
+                           placeholder="Enter your password"
+                           autocomplete="current-password"
+                           required />
+                    <button type="button" class="btn-toggle-password" onclick="togglePassword('password', this)">
+                        👁
+                    </button>
+                </div>
+                <div class="auth-error" id="passwordError"></div>
+            </div>
+
+            <div class="forgot-password">
+                <a href="#" onclick="alert('Password reset — coming soon'); return false;">
+                    Forgot password?
+                </a>
+            </div>
+
+            <button type="submit" class="btn-auth-primary" id="btnLogin">
+                Login
+            </button>
+
+        </form>
+
+        <div class="auth-divider">
+            <span>Don't have an account?</span>
+        </div>
+
+        <a href="{{ url_for('register') }}" class="btn-auth-secondary">
+            Create Account
+        </a>
+
+    </div>
+
+    <!-- Security Badge -->
+    <div class="auth-security">
+        🔒 Secured with bank-level encryption
+    </div>
+
+</div>
+<script>
+async function submitLogin(event) {
+    event.preventDefault();
+
+    const email    = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value.trim();
+    const btn      = document.getElementById('btnLogin');
+
+    // Clear errors
+    document.getElementById('emailError').textContent = '';
+    document.getElementById('passwordError').textContent = '';
+
+    btn.disabled    = true;
+    btn.textContent = 'Logging In…';
+
+    try {
+        console.log('Attempting login for:', email);
+
+        const res = await fetch('/api/login', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            credentials: 'same-origin',  // IMPORTANT: Include credentials
+            body: JSON.stringify({
+                email: email,
+                password: password,
+            }),
+        });
+
+        const data = await res.json();
+
+        console.log('Login response:', res.status, data);
+
+        if (!res.ok) {
+            const errorField = data.field || 'passwordError';
+            document.getElementById(
+                errorField === 'email' ? 'emailError' : 'passwordError'
+            ).textContent = data.error;
+
+            btn.disabled    = false;
+            btn.textContent = 'Login';
+            return;
+        }
+
+        // Success - redirect to home
+        btn.textContent = 'Success! Redirecting…';
+        console.log('Redirecting to:', data.redirect);
+
+        // Use window.location.href for redirect
+        window.location.href = data.redirect;
+
+    } catch(e) {
+        console.error('Login error:', e);
+        document.getElementById('passwordError').textContent =
+            'Network error. Please try again.';
+        btn.disabled    = false;
+        btn.textContent = 'Login';
+    }
+}
+
+function togglePassword(inputId, btn) {
+    const input = document.getElementById(inputId);
+    if (input.type === 'password') {
+        input.type = 'text';
+        btn.textContent = '👁‍🗨';
+    } else {
+        input.type = 'password';
+        btn.textContent = '👁';
+    }
+}
+</script>
+{% endblock %}
