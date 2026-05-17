@@ -9,3 +9,4 @@ __pycache__/
 .vscode/
 .idea/
 static/images/Vaultcore wallet img/
+.git_backup_*
