@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Coming Soon</title>
+  <style>
+    body, html {
+      height: 100%;
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      flex-direction: column;
+      padding: 20px;
+    }
+    h1 {
+      font-size: 4em;
+      margin: 0 0 10px;
+      letter-spacing: 2px;
+    }
+    p {
+      font-size: 1.5em;
+      margin: 0 0 30px;
+    }
+    .timer {
+      font-size: 1.2em;
+      letter-spacing: 1.5px;
+      background: rgba(255, 255, 255, 0.15);
+      padding: 15px 30px;
+      border-radius: 30px;
+      font-weight: bold;
+      display: inline-block;
+      min-width: 240px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Coming Soon</h1>
+  <p>Our website is under construction. We'll be here soon with something amazing!</p>
+  <div class="timer" id="countdown">
+    Loading...
+  </div>
+
+  <script>
+    // Set the date we're counting down to (for example: 30 days from now)
+    const countdownDate = new Date();
+    countdownDate.setDate(countdownDate.getDate() + 30);
+
+    function updateCountdown() {
+      const now = new Date().getTime();
+      const distance = countdownDate - now;
+
+      if (distance < 0) {
+        document.getElementById("countdown").innerHTML = "We're live!";
+        clearInterval(interval);
+        return;
+      }
+
+      const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+      document.getElementById("countdown").innerHTML = 
+        days + "d " + hours + "h " + minutes + "m " + seconds + "s";
+    }
+
+    updateCountdown(); // initial call
+    const interval = setInterval(updateCountdown, 1000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,185 @@
+<!DOCTYPE HTML>
+<html>
+	<head>
+		<title>{% block title %}VaultCore Wallet{% endblock %}</title>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+		<link rel="stylesheet" href="{{ url_for('static', filename='assets/css/styles.css') }}" />
+		<link rel="stylesheet" href="{{ url_for('static', filename='assets/css/script.css') }}" />
+	</head>
+	<div id="toast" class="toast"></div>
+	<body class="is-preload {% if request.endpoint == 'login' %}login-page{% elif request.endpoint == 'register' %}register-page{% elif request.endpoint == 'home' %}app-login-bg-page{% endif %}">
+
+		<!-- Wrapper -->
+		<div id="wrapper" class="fade-in">
+
+			<!-- Header -->
+			<header id="header">
+				<a href="{{ url_for('home') }}" class="logo">
+					<img src="{{ url_for('static', filename='images/VaultCore wallet img/Logo.png') }}" alt="VaultCore Wallet Logo" style="height: 50px; width: auto; object-fit: contain;">
+				</a>
+
+				<nav id="main-nav">
+
+					<!-- hamburger — visible only on mobile -->
+					<button class="nav-toggle" id="navToggle"
+					        aria-label="Toggle navigation"
+					        aria-expanded="false">
+						<span></span>
+						<span></span>
+						<span></span>
+					</button>
+
+					<ul class="nav-links" id="navLinks">
+						<li class="{% if request.endpoint == 'home' %}active{% endif %}">
+							<a href="{{ url_for('home') }}" class="nav-btn">Home</a>
+						</li>
+						<li class="{% if request.endpoint == 'send' %}active{% endif %}">
+							<a href="{{ url_for('send') }}" class="nav-btn">Send</a>
+						</li>
+						<li class="{% if request.endpoint == 'receive' %}active{% endif %}">
+							<a href="{{ url_for('receive') }}" class="nav-btn">Receive</a>
+						</li>
+						<li class="{% if request.endpoint == 'market' %}active{% endif %}">
+							<a href="{{ url_for('market') }}" class="nav-btn">Market</a>
+						</li>
+						<li class="{% if request.endpoint == 'wallet' %}active{% endif %}">
+							<a href="{{ url_for('wallet') }}" class="nav-btn">Wallet</a>
+						</li>
+						<li class="{% if request.endpoint == 'withdraw' %}active{% endif %}">
+							<a href="{{ url_for('withdraw') }}" class="nav-btn">Withdraw</a>
+						</li>
+						<li class="{% if request.endpoint == 'settings' %}active{% endif %}">
+							<a href="{{ url_for('settings') }}" class="nav-btn">Settings</a>
+						</li>
+						{% if current_user %}
+						<li class="{% if request.endpoint == 'logout' %}active{% endif %}">
+							<a href="{{ url_for('logout') }}" class="nav-btn">Logout</a>
+						</li>
+						{% else %}
+						<li><a href="{{ url_for('login') }}" class="nav-btn">Login</a></li>
+						{% endif %}
+						<li class="{% if request.endpoint == 'about' %}active{% endif %}">
+							<a href="{{ url_for('about') }}" class="nav-btn">About</a>
+						</li>
+					</ul>
+
+				</nav>
+			</header>
+
+			<!-- Main -->
+			<div id="main">
+				{% block content %}{% endblock %}
+			</div>
+
+			<hr style="margin: 40px 0; border: none; border-top: 1px solid #ddd;">
+
+			<!-- Footer (only on home when logged in, settings and about) -->
+			{% if (request.endpoint == 'home' and current_user) or request.endpoint in ['settings','about'] %}
+			<footer id="footer">
+				<section class="split contact">
+					<section class="alt">
+						<h3>Address</h3>
+						<p>no 58 Market Street, Suite 2308, San Francisco, CA 94104</p>
+					</section>
+					<section>
+						<h3>Phone</h3>
+						<p><a href="#">(+1)8028853151</a></p>
+					</section>
+					<section>
+						<h3>Whatsapp</h3>
+						<p><a href="#">(+1)7032205608</a></p>
+					</section>
+					<section>
+						<h3>Email</h3>
+						<p><a href="mailto:vaultcorewallet@gmail.com">vaultcorewallet@gmail.com</a></p>
+					</section>
+					<section>
+						<h3>Social</h3>
+						<ul class="icons alt">
+							<li><a href="https://x.com/Vaultcorewallet" class="icon brands alt fa-twitter"><span class="label">Twitter</span></a></li>
+							<li><a href="https://www.facebook.com/share/18rEF3RocE/" class="icon brands alt fa-facebook-f"><span class="label">Facebook</span></a></li>
+							<li><a href="https://www.instagram.com/vaultcorewallet?igsh=aHdvcG5rbDF10HBy" class="icon brands alt fa-instagram"><span class="label">Instagram</span></a></li>
+							<li><a href="https://github.com/chromemaster1" class="icon brands alt fa-github"><span class="label">GitHub</span></a></li>
+						</ul>
+					</section>
+				</section>
+			</footer>
+
+			<!-- Copyright -->
+			<div id="copyright">
+				<ul>
+					<li>&copy; 2023 VaultCore Wallet. All rights reserved.</li>
+					<li>Design: <a href="https://html5up.net">HTML5 UP</a></li>
+				</ul>
+			</div>
+
+		</div>
+		{% endif %}
+
+		<!-- Scripts -->
+		<script src="{{ url_for('static', filename='assets/js/jquery.min.js') }}"></script>
+		<script src="{{ url_for('static', filename='assets/js/jquery.scrollex.min.js') }}"></script>
+		<script src="{{ url_for('static', filename='assets/js/jquery.scrolly.min.js') }}"></script>
+		<script src="{{ url_for('static', filename='assets/js/browser.min.js') }}"></script>
+		<script src="{{ url_for('static', filename='assets/js/breakpoints.min.js') }}"></script>
+		<script src="{{ url_for('static', filename='assets/js/util.js') }}"></script>
+		<script src="{{ url_for('static', filename='assets/js/main.js') }}"></script>
+
+		<script>
+		// Poll user notifications every 10s and show quick toast
+		async function pollNotifications(){
+		  try{
+		    const res = await fetch('/api/settings/notifications');
+		    if(!res.ok) return;
+		    const notes = await res.json();
+		    const toast = document.getElementById('toast');
+		    if(!notes || !notes.length) return;
+		    // show newest unread notifications
+		    notes.filter(n=>!n.is_read).slice(0,3).forEach(n=>{
+		      showToast(n.title + ': ' + n.message);
+		    });
+		  }catch(e){console.debug('notif poll failed', e)}
+		}
+
+		function showToast(msg){
+		  const t = document.getElementById('toast');
+		  t.textContent = msg;
+		  t.classList.add('visible');
+		  setTimeout(()=> t.classList.remove('visible'), 5000);
+		}
+
+		setInterval(pollNotifications, 10000);
+		</script>
+
+		<!-- Nav toggle script -->
+		<script>
+			const navToggle = document.getElementById('navToggle');
+			const navLinks  = document.getElementById('navLinks');
+
+			navToggle.addEventListener('click', () => {
+				const isOpen = navLinks.classList.toggle('open');
+				navToggle.setAttribute('aria-expanded', isOpen);
+			});
+
+			// close dropdown when any link is tapped on mobile
+			navLinks.querySelectorAll('a').forEach(a =>
+				a.addEventListener('click', () =>
+					navLinks.classList.remove('open')
+				)
+			);
+
+			async function logout() {
+			if (!confirm('Are you sure you want to logout?')) return;
+
+			try {
+				await fetch('/api/logout', {method: 'POST'});
+				window.location.href = '/';
+			} catch(e) {
+				alert('Logout failed. Please try again.');
+			}
+			}
+		</script>
+
+	</body>
+</html>
