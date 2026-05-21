@@ -15,6 +15,7 @@ Flask-Login==0.6.3
 Flask-SQLAlchemy==3.1.1
 frozenlist==1.8.0
 greenlet==3.5.0
+gunicorn==25.1.0
 idna==3.13
 itsdangerous==2.2.0
 Jinja2==3.1.6
@@ -23,6 +24,7 @@ multidict==6.7.1
 packaging==26.2
 pillow==12.2.0
 propcache==0.4.1
+psycopg2-binary==2.9.12
 pycparser==3.0
 pycryptodome==3.23.0
 pyotp==2.9.0
@@ -43,4 +45,3 @@ websockets==16.0
 Werkzeug==3.1.8
 wheel==0.47.0
 yarl==1.23.0
-gunicorn==25.1.0
