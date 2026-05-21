@@ -10,3 +10,4 @@ __pycache__/
 .idea/
 static/images/Vaultcore wallet img/
 .git_backup_*
+/*.html

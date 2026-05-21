@@ -23,11 +23,10 @@ from model import (
     SupportTicket, SupportMessage, Trade
 )
 from apscheduler.schedulers.background import BackgroundScheduler
-# from werkzeug.utils import secure_filename
 from werkzeug.utils import secure_filename
 import psycopg2
-<<<<<<< HEAD
 import gunicorn
+from sqlalchemy import inspect
 
 
 _base_dir = pathlib.Path(__file__).parent.resolve()
@@ -104,7 +103,6 @@ with app.app_context():
         log.info("Database tables created successfully")
 
         # Verify tables exist
-        from sqlalchemy import inspect
         inspector = inspect(db.engine)
         tables = inspector.get_table_names()
         log.info("Existing tables: %s", tables)
@@ -574,8 +572,6 @@ def authenticate_user(email: str, password: str) -> dict | None:
 #  LOGIN REQUIRED DECORATOR
 # ══════════════════════════════════════════════
 
-# auth.py - Replace the login_required decorator
-
 def login_required(f):
     """Decorator to protect routes requiring authentication."""
     @wraps(f)
@@ -610,13 +606,6 @@ def admin_required(f):
             flash('Please login to access this page.', 'warning')
 
         return redirect(url_for('login'))
-
-        user = User.query.filter_by(user_id=session['user_id']).first()
-        if not user or user.role != 'admin':
-            flash('Admin access required.', 'error')
-            return redirect(url_for('home'))
-
-        return f(*args, **kwargs)
     return decorated_function
 
 def require_role(role):
@@ -628,8 +617,6 @@ def require_role(role):
             return f(*args, **kwargs)
         return wrapper
     return decorator
-
-# auth.py - Replace get_current_user
 
 def get_current_user() -> User | None:
     """Get the currently logged-in user object from session."""
@@ -1621,7 +1608,6 @@ def admin_toggle_coming_soon():
         log.exception("Failed to toggle coming soon flag: %s", e)
         return jsonify({"error": "failed", "detail": str(e)}), 500
 
-
 @app.route('/admin/coming-soon/state', methods=['GET'])
 @admin_required
 def admin_coming_soon_state():
@@ -1629,6 +1615,7 @@ def admin_coming_soon_state():
         return jsonify({"coming_soon": bool(is_coming_soon_enabled())})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 @app.route('/')
 def home():
     """Home page - requires login."""
@@ -2625,23 +2612,7 @@ def api_admin_set_wallet_hash():
         log.error("api_admin_set_wallet_hash failed: %s", e, exc_info=True)
         return jsonify({"error": "Failed to save wallet hash."}), 500
 
-    # POST - update profile
-    data = request.get_json(force=True)
-    full_name = data.get("full_name", "").strip()
 
-    if not full_name or len(full_name) < 2:
-        return jsonify({"error": "Invalid name"}), 400
-
-    try:
-        user.full_name = full_name
-        db.session.commit()
-        session['full_name'] = full_name
-
-        return jsonify({"success": True, "message": "Profile updated"})
-    except Exception as e:
-        db.session.rollback()
-        log.error("Profile update failed: %s", e)
-        return jsonify({"error": "Update failed"}), 500
 
 
 @app.route('/api/settings/notifications')
