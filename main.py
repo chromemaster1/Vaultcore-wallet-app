@@ -24,25 +24,17 @@ from model import (
 )
 from apscheduler.schedulers.background import BackgroundScheduler
 from werkzeug.utils import secure_filename
-import psycopg2
-import gunicorn
 from sqlalchemy import inspect
+import sqlite3
 
 
 _base_dir = pathlib.Path(__file__).parent.resolve()
 load_dotenv(dotenv_path=_base_dir / '.env')
 
 
-# load_dotenv()
+DB_PATH = _base_dir / 'instance' / 'user.db'
 
 env_path = pathlib.Path('.env')
-print("=== ENV DEBUG ===")
-print(f"  Working directory : {pathlib.Path.cwd()}")
-print(f"  .env exists here  : {env_path.exists()}")
-print(f"  .env full path    : {env_path.resolve()}")
-print(f"  CMC key loaded    : {'YES' if os.getenv('CMC_PRO_API_KEY') else 'NO — still missing'}")
-print(f"  NEWS key loaded   : {'YES' if os.getenv('NEWS_API_KEY') else 'NO — still missing'}")
-print("=================")
 
 # ── logging setup ─────────────────────────────
 logging.basicConfig(
@@ -53,7 +45,7 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", "FLASK_SECRET_KEY")
+app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY")
 app.config["API_KEY"]   = os.getenv("NEWS_API_KEY")
 CMC_PRO_API_KEY         = os.getenv("CMC_PRO_API_KEY")
 CRYPTO_MARKET_URL       = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest"
@@ -111,14 +103,18 @@ with app.app_context():
         log.error("Failed to create database tables: %s", e, exc_info=True)
 
 # Start background scheduler for periodic tasks
-try:
+# try:
+#     scheduler = BackgroundScheduler()
+#     scheduler.add_job(lambda: persist_market_snapshot(200), 'interval', seconds=60, id='market_persist')
+#     scheduler.start()
+#     log.info("Background scheduler started")
+# except Exception as e:
+#     log.error("Failed to start scheduler: %s", e, exc_info=True)
+
+if os.environ.get("WERKZEUG_RUN_MAIN") != "false":
     scheduler = BackgroundScheduler()
     scheduler.add_job(lambda: persist_market_snapshot(200), 'interval', seconds=60, id='market_persist')
     scheduler.start()
-    log.info("Background scheduler started")
-except Exception as e:
-    log.error("Failed to start scheduler: %s", e, exc_info=True)
-
 
 POPULAR_NETWORKS = ["bitcoin", "ethereum", "bnb", "solana", "usdt_trc20", "xrp", "ada", "doge", "dot", "trx"]
 
@@ -522,52 +518,6 @@ def email_exists(email: str) -> bool:
     """Check if email is already registered."""
     return User.query.filter_by(email=email.lower()).first() is not None
 
-
-def create_user(email: str, password: str, full_name: str) -> dict:
-    """
-    Create new user account.
-    Returns user dict or None if email exists.
-    """
-    email = email.lower().strip()
-
-    if email_exists(email):
-        return None
-
-    user_id = secrets.token_hex(8)
-    pw_hash, salt = hash_password(password)
-
-    user = {
-        "user_id":     user_id,
-        "email":       email,
-        "password_hash": pw_hash,
-        "salt":        salt,
-        "full_name":   full_name.strip(),
-        "created_at":  datetime.utcnow().isoformat(),
-    }
-
-    USERS_DB[email] = user
-    log.info("auth: user created — %s (%s)", email, user_id)
-
-    return user
-
-def authenticate_user(email: str, password: str) -> dict | None:
-    """
-    Authenticate user credentials.
-    Returns user dict if valid, None otherwise.
-    """
-    email = email.lower().strip()
-    user  = USERS_DB.get(email)
-
-    if not user:
-        return None
-
-    if verify_password(password, user["password_hash"], user["salt"]):
-        log.info("auth: login success — %s", email)
-        return user
-
-    log.warning("auth: login failed — %s (wrong password)", email)
-    return None
-
 # ══════════════════════════════════════════════
 #  LOGIN REQUIRED DECORATOR
 # ══════════════════════════════════════════════
@@ -599,13 +549,15 @@ def login_required(f):
     return decorated_function
 
 def admin_required(f):
-    """Decorator to protect admin-only routes."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
             flash('Please login to access this page.', 'warning')
-
-        return redirect(url_for('login'))
+            return redirect(url_for('login'))
+        user = User.query.filter_by(user_id=session['user_id']).first()
+        if not user or user.role != 'admin':
+            return jsonify({"error": "Admin access required"}), 403
+        return f(*args, **kwargs)
     return decorated_function
 
 def require_role(role):
@@ -1820,11 +1772,11 @@ def api_receive(symbol):
 def withdraw():
     """Render withdraw page."""
     linked_bank = session.get('linked_bank')  # {bank_code, bank_name, account_last4}
-    EXCHANGE_RATES = {
+    withdraw_rate = {
         "USDT": 1.0
     }
     return render_template('withdraw.html',
-                           exchange_rates=EXCHANGE_RATES,
+                           exchange_rates=withdraw_rate,
                           countries=COUNTRIES,
                           linked_bank=linked_bank)
 
@@ -2054,7 +2006,7 @@ def api_wallet_summary():
         md = MarketData.query.filter_by(symbol=w.symbol.upper()).order_by(MarketData.last_updated.desc()).first()
         if md and md.price:
             price = md.price
-        usd_value = (float(w.balance) * price) if price else None
+        usd_value = (float(w.balance) * price) if price else 0.0
         if usd_value:
             total_value += usd_value
         holdings[w.symbol.upper()] = {
@@ -2550,20 +2502,6 @@ def api_mark_read(notif_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
-
-
-@app.route('/api/settings/security/2fa', methods=['POST'])
-@login_required
-def api_enable_2fa():
-    """Enable 2FA (placeholder)."""
-    user = get_current_user()
-
-    # TODO: Implement actual 2FA with pyotp
-    return jsonify({
-        "success": True,
-        "message": "2FA setup — coming soon. Use Google Authenticator."
-    })
-
 
 @app.route('/api/admin/users')
 @admin_required
