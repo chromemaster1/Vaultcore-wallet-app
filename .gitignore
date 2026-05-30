@@ -8,6 +8,5 @@ __pycache__/
 .DS_Store
 .vscode/
 .idea/
-static/images/Vaultcore wallet img/
 .git_backup_*
 /*.html
