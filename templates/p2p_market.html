@@ -1,121 +1,398 @@
 {% extends "base.html" %}
-{% block title %}P2P Trading — VaultCore Wallet{% endblock %}
-
+{% block title %}P2P Trading — VaultCore Exchange{% endblock %}
 {% block content %}
 
-<section class="p2p-page">
+<div class="p2p-page">
 
+  <!-- Page header -->
   <div class="p2p-header">
-    <h2 class="page-title">P2P Marketplace</h2>
-    <p class="page-sub">Trade crypto directly with other users</p>
+    <h2>P2P Trading</h2>
+    <p>Buy and sell crypto directly with other users — secured by escrow</p>
   </div>
 
-  <!-- Filter Bar -->
-  <div class="p2p-filters">
-    <select class="p2p-filter-select" id="filterCrypto">
-      <option value="">All Coins</option>
-      <option value="BTC">Bitcoin (BTC)</option>
-      <option value="ETH">Ethereum (ETH)</option>
-      <option value="USDT">Tether (USDT)</option>
-    </select>
+  <!-- Controls block -->
+  <div class="p2p-controls">
 
-    <select class="p2p-filter-select" id="filterFiat">
-      <option value="">All Currencies</option>
-      <option value="NGN">NGN</option>
-      <option value="USD">USD</option>
-      <option value="KES">KES</option>
-      <option value="GHS">GHS</option>
-    </select>
-
-    <select class="p2p-filter-select" id="filterType">
-      <option value="sell">Buy Crypto (I'm paying cash)</option>
-      <option value="buy">Sell Crypto (I'm receiving cash)</option>
-    </select>
-
-    <button class="btn-create-offer" onclick="alert('Create offer — coming soon')">
-      + Create Offer
-    </button>
-  </div>
-
-  <!-- Offers List -->
-  <div class="p2p-offers" id="p2pOffers">
-    <!-- Mock offers populated by JS -->
-  </div>
-
-</section>
-
-<script>
-const mockOffers = [
-  {
-    id: 1, trader: "CryptoKing92", trades: 142, rating: 98.5,
-    type: "sell", crypto: "BTC", amount: "0.05", fiat: "NGN",
-    price: 110500000, payment: "Bank Transfer", limit: "₦50,000 - ₦5,000,000"
-  },
-  {
-    id: 2, trader: "FastCash_NG", trades: 87, rating: 99.2,
-    type: "sell", crypto: "USDT", amount: "5000", fiat: "NGN",
-    price: 1680, payment: "Bank Transfer, Mobile Money", limit: "₦10,000 - ₦500,000"
-  },
-  {
-    id: 3, trader: "EthTrader01", trades: 203, rating: 97.8,
-    type: "sell", crypto: "ETH", amount: "2.5", fiat: "USD",
-    price: 3550, payment: "PayPal, Zelle", limit: "$100 - $5,000"
-  },
-  {
-    id: 4, trader: "NairaMaster", trades: 56, rating: 96.4,
-    type: "buy", crypto: "BTC", amount: "0.1", fiat: "NGN",
-    price: 109800000, payment: "Bank Transfer", limit: "₦100,000 - ₦10,000,000"
-  },
-  {
-    id: 5, trader: "QuickSwap_KE", trades: 124, rating: 98.9,
-    type: "sell", crypto: "USDT", amount: "2000", fiat: "KES",
-    price: 131, payment: "M-Pesa", limit: "KSh 5,000 - KSh 200,000"
-  },
-];
-
-function renderOffers() {
-  const html = mockOffers.map(o => `
-    <div class="p2p-offer-card">
-      <div class="offer-header">
-        <div class="trader-info">
-          <div class="trader-name">${o.trader}</div>
-          <div class="trader-stats">
-            ${o.trades} trades | ${o.rating}% positive
-          </div>
-        </div>
-        <div class="offer-type ${o.type}">${o.type.toUpperCase()}</div>
+    <!-- Row 1: Buy/Sell + Coin tabs -->
+    <div class="p2p-top-row">
+      <div class="p2p-side-tabs">
+        <button class="p2p-side-tab buy active" id="tabBuy"  onclick="setSide('buy')">Buy</button>
+        <button class="p2p-side-tab sell"       id="tabSell" onclick="setSide('sell')">Sell</button>
       </div>
-      <div class="offer-body">
-        <div class="offer-row">
-          <span class="offer-label">Amount</span>
-          <span class="offer-value">${o.amount} ${o.crypto}</span>
-        </div>
-        <div class="offer-row">
-          <span class="offer-label">Price</span>
-          <span class="offer-value price-highlight">
-            ${o.price.toLocaleString()} ${o.fiat}
-          </span>
-        </div>
-        <div class="offer-row">
-          <span class="offer-label">Payment</span>
-          <span class="offer-value">${o.payment}</span>
-        </div>
-        <div class="offer-row">
-          <span class="offer-label">Limits</span>
-          <span class="offer-value">${o.limit}</span>
-        </div>
+
+      <div class="p2p-coin-tabs" id="p2pCoinTabs">
+        <button class="p2p-coin-tab active" data-coin="USDT" onclick="setCoin('USDT')">
+          <span class="coin-icon usdt sm">USDT</span><span>USDT</span>
+        </button>
+        <button class="p2p-coin-tab" data-coin="BTC" onclick="setCoin('BTC')">
+          <span class="coin-icon btc sm">BTC</span><span>BTC</span>
+        </button>
+        <button class="p2p-coin-tab" data-coin="ETH" onclick="setCoin('ETH')">
+          <span class="coin-icon eth sm">ETH</span><span>ETH</span>
+        </button>
+        <button class="p2p-coin-tab" data-coin="BNB" onclick="setCoin('BNB')">
+          <span class="coin-icon bnb sm">BNB</span><span>BNB</span>
+        </button>
+        <button class="p2p-coin-tab" data-coin="SOL" onclick="setCoin('SOL')">
+          <span class="coin-icon sol sm">SOL</span><span>SOL</span>
+        </button>
+        <button class="p2p-coin-tab" data-coin="ADA" onclick="setCoin('ADA')">
+          <span class="coin-icon ada sm">ADA</span><span>ADA</span>
+        </button>
       </div>
-      <button class="btn-trade-p2p" onclick="startP2PTrade(${o.id})">
-        ${o.type === 'sell' ? 'Buy' : 'Sell'} ${o.crypto}
+    </div>
+
+    <!-- Row 2: Filters -->
+    <div class="p2p-filter-bar">
+      <input class="p2p-filter-input" id="p2pAmountInput"
+             type="text" inputmode="decimal" placeholder="Amount…"
+             oninput="applyFilters()" />
+
+      <select class="p2p-filter-select" id="p2pFiatSelect" onchange="applyFilters()">
+        <option value="">All Currencies</option>
+        <option value="NGN">NGN</option>
+        <option value="USD">USD</option>
+        <option value="KES">KES</option>
+        <option value="GHS">GHS</option>
+        <option value="ZAR">ZAR</option>
+        <option value="GBP">GBP</option>
+        <option value="EUR">EUR</option>
+      </select>
+
+      <select class="p2p-filter-select" id="p2pPaymentSelect" onchange="applyFilters()">
+        <option value="">All Payments</option>
+        <option value="Bank Transfer">Bank Transfer</option>
+        <option value="Mobile Money">Mobile Money</option>
+        <option value="M-Pesa">M-Pesa</option>
+        <option value="PayPal">PayPal</option>
+        <option value="Zelle">Zelle</option>
+      </select>
+
+      <div class="p2p-filter-actions">
+        <button class="btn-refresh-p2p" onclick="renderOffers()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          <span>Refresh</span>
+        </button>
+        <button class="btn-create-offer" onclick="openCreateModal()">+ Create Offer</button>
+      </div>
+    </div>
+
+  </div><!-- /p2p-controls -->
+
+  <!-- Desktop column headers (hidden on mobile) -->
+  <div class="p2p-list-header">
+    <div>Advertiser</div>
+    <div>Price</div>
+    <div>Available</div>
+    <div>Limits</div>
+    <div>Payment</div>
+    <div>Action</div>
+  </div>
+
+  <!-- Offer list -->
+  <div class="p2p-list" id="p2pOfferList">
+    <div class="p2p-empty">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" style="opacity:.3;margin-bottom:12px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <div>Loading offers…</div>
+    </div>
+  </div>
+
+</div><!-- /p2p-page -->
+
+
+<!-- ══ TRADE MODAL ══ -->
+<div class="p2p-modal-overlay" id="p2pTradeModal">
+  <div class="p2p-modal">
+    <div class="p2p-modal-header">
+      <div class="p2p-modal-title" id="modalTitle">Buy USDT</div>
+      <button class="p2p-modal-close" onclick="closeTradeModal()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-  `).join('');
+    <div class="p2p-modal-body">
+      <!-- Trader -->
+      <div class="p2p-modal-trader">
+        <div class="p2p-avatar" id="modalAvatar"></div>
+        <div>
+          <div class="p2p-modal-trader-name" id="modalTrader"></div>
+          <div class="p2p-modal-trader-meta" id="modalTraderMeta"></div>
+        </div>
+      </div>
+      <!-- Info grid -->
+      <div class="p2p-modal-info">
+        <div class="p2p-info-item">
+          <div class="p2p-info-label">Price</div>
+          <div class="p2p-info-value" id="modalPrice"></div>
+        </div>
+        <div class="p2p-info-item">
+          <div class="p2p-info-label">Available</div>
+          <div class="p2p-info-value" id="modalAvailable"></div>
+        </div>
+        <div class="p2p-info-item">
+          <div class="p2p-info-label">Limits</div>
+          <div class="p2p-info-value" id="modalLimits"></div>
+        </div>
+        <div class="p2p-info-item">
+          <div class="p2p-info-label">Payment</div>
+          <div class="p2p-info-value" id="modalPayment" style="font-size:12px;font-family:inherit"></div>
+        </div>
+      </div>
+      <!-- Amount inputs -->
+      <div class="p2p-amount-row">
+        <div class="p2p-amount-group">
+          <div class="p2p-amount-label" id="fiatLabel">I will pay</div>
+          <input class="p2p-amount-input" id="p2pFiatAmt" type="text" inputmode="decimal"
+                 placeholder="0.00" oninput="calcCrypto()" />
+        </div>
+        <div class="p2p-swap-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+        </div>
+        <div class="p2p-amount-group">
+          <div class="p2p-amount-label" id="cryptoLabel">I will receive</div>
+          <input class="p2p-amount-input" id="p2pCryptoAmt" type="text" inputmode="decimal"
+                 placeholder="0.00" oninput="calcFiat()" />
+        </div>
+      </div>
+      <!-- Escrow note -->
+      <div class="p2p-escrow-note">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <span>Crypto held in <strong>escrow</strong> until payment is confirmed. VaultCore never stores funds beyond the transaction window.</span>
+      </div>
+    </div>
+    <div class="p2p-modal-footer">
+      <button class="btn-p2p-cancel" onclick="closeTradeModal()">Cancel</button>
+      <button class="btn-p2p-confirm-buy" id="btnConfirmTrade" onclick="confirmP2PTrade()">Confirm Order</button>
+    </div>
+  </div>
+</div>
 
-  document.getElementById('p2pOffers').innerHTML = html;
+
+<script>
+// ─── Data ────────────────────────────────────────────────────────────────────
+const AVATAR_COLORS = ['#c9a84c','#627eea','#0ecb81','#9945ff','#f7931a','#e6007a','#0085c3','#f3ba2f'];
+
+const ALL_OFFERS = [
+  { id:1,  trader:'CryptoKing92',   trades:1420, rating:99.2, side:'sell', coin:'USDT', available:8500,  fiat:'NGN', price:1850,     payment:['Bank Transfer'] },
+  { id:2,  trader:'FastCash_NG',    trades:873,  rating:98.5, side:'sell', coin:'USDT', available:12000, fiat:'NGN', price:1870,     payment:['Bank Transfer','Mobile Money'] },
+  { id:3,  trader:'QuickSwap_KE',   trades:412,  rating:99.6, side:'sell', coin:'USDT', available:3000,  fiat:'KES', price:131,      payment:['M-Pesa'] },
+  { id:4,  trader:'StableSwap',     trades:2100, rating:99.8, side:'sell', coin:'USDT', available:25000, fiat:'USD', price:1.001,    payment:['Bank Transfer','PayPal'] },
+  { id:5,  trader:'NairaMaster',    trades:560,  rating:97.4, side:'buy',  coin:'USDT', available:5000,  fiat:'NGN', price:1830,     payment:['Bank Transfer'] },
+  { id:6,  trader:'SatoshiFan',     trades:304,  rating:98.1, side:'sell', coin:'BTC',  available:0.25,  fiat:'NGN', price:110500000, payment:['Bank Transfer'] },
+  { id:7,  trader:'BlockDealer',    trades:88,   rating:96.8, side:'sell', coin:'BTC',  available:0.1,   fiat:'USD', price:67200,    payment:['Zelle','PayPal'] },
+  { id:8,  trader:'HodlKing',       trades:622,  rating:99.0, side:'buy',  coin:'BTC',  available:0.5,   fiat:'NGN', price:109800000, payment:['Bank Transfer'] },
+  { id:9,  trader:'EthTrader01',    trades:203,  rating:97.8, side:'sell', coin:'ETH',  available:5.0,   fiat:'USD', price:3550,     payment:['PayPal','Zelle'] },
+  { id:10, trader:'DefiWhale',      trades:914,  rating:99.4, side:'sell', coin:'ETH',  available:12.5,  fiat:'GBP', price:2800,     payment:['Bank Transfer'] },
+  { id:11, trader:'Lagos_Eth',      trades:145,  rating:97.2, side:'sell', coin:'ETH',  available:2.0,   fiat:'NGN', price:5800000,  payment:['Bank Transfer'] },
+  { id:12, trader:'BinancePro',     trades:1830, rating:99.9, side:'sell', coin:'BNB',  available:150,   fiat:'USD', price:580,      payment:['PayPal','Bank Transfer'] },
+  { id:13, trader:'ChainMaster',    trades:342,  rating:98.3, side:'sell', coin:'BNB',  available:80,    fiat:'NGN', price:950000,   payment:['Bank Transfer'] },
+  { id:14, trader:'SolHunter',      trades:267,  rating:98.7, side:'sell', coin:'SOL',  available:200,   fiat:'USD', price:172,      payment:['Zelle','PayPal'] },
+  { id:15, trader:'AfriSol',        trades:89,   rating:96.5, side:'sell', coin:'SOL',  available:50,    fiat:'NGN', price:280000,   payment:['Bank Transfer'] },
+  { id:16, trader:'CardanoKing',    trades:178,  rating:97.6, side:'sell', coin:'ADA',  available:5000,  fiat:'USD', price:0.52,     payment:['PayPal'] },
+  { id:17, trader:'LovelaceTrader', trades:94,   rating:98.2, side:'sell', coin:'ADA',  available:10000, fiat:'NGN', price:850,      payment:['Bank Transfer','Mobile Money'] },
+];
+
+let currentSide = 'buy';
+let currentCoin = 'USDT';
+let activeOffer = null;
+
+// ─── Formatters ───────────────────────────────────────────────────────────────
+const FIAT_SYM = { NGN:'₦', USD:'$', KES:'KSh ', GHS:'₵', ZAR:'R', GBP:'£', EUR:'€' };
+
+function fmtPrice(price, fiat) {
+  const s = FIAT_SYM[fiat] || fiat + ' ';
+  if (price >= 1e6) return s + (price/1e6).toFixed(2) + 'M';
+  if (price >= 1e3) return s + price.toLocaleString('en-US', {minimumFractionDigits:0, maximumFractionDigits:2});
+  return s + price.toFixed(price < 10 ? 4 : 2);
 }
 
-function startP2PTrade(id) {
-  alert(`Start P2P trade #${id} — full escrow flow coming soon`);
+function fmtAvail(amount, coin) {
+  return amount >= 1000 ? amount.toLocaleString('en-US') + ' ' + coin
+       : amount < 1     ? amount.toFixed(6) + ' ' + coin
+       : amount.toFixed(2) + ' ' + coin;
+}
+
+function fmtLim(o) {
+  const s = FIAT_SYM[o.fiat] || o.fiat + ' ';
+  const fmt = n => n >= 1e6 ? s + (n/1e6).toFixed(1) + 'M'
+                 : n >= 1e3 ? s + (n/1e3).toFixed(0) + 'k'
+                 : s + n;
+  const minLim = o.price * (o.coin === 'BTC' ? 0.001 : o.coin === 'ETH' ? 0.01 : 10);
+  const maxLim = o.available * o.price;
+  return fmt(Math.round(minLim / 100) * 100) + ' – ' + fmt(Math.round(maxLim));
+}
+
+function paymentTags(methods) {
+  return methods.map(m => `<span class="p2p-payment-tag">${m}</span>`).join('');
+}
+
+// ─── Filter ───────────────────────────────────────────────────────────────────
+function getFiltered() {
+  const fiat    = document.getElementById('p2pFiatSelect').value;
+  const payment = document.getElementById('p2pPaymentSelect').value;
+  const wantSide = currentSide === 'buy' ? 'sell' : 'buy';
+  return ALL_OFFERS.filter(o =>
+    o.coin === currentCoin &&
+    o.side === wantSide &&
+    (!fiat    || o.fiat === fiat) &&
+    (!payment || o.payment.includes(payment))
+  );
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function renderOffers() {
+  const list   = document.getElementById('p2pOfferList');
+  const offers = getFiltered();
+  const verb   = currentSide === 'buy' ? 'Buy' : 'Sell';
+  const btnCls = currentSide === 'buy' ? 'btn-p2p-buy' : 'btn-p2p-sell';
+
+  if (!offers.length) {
+    list.innerHTML = `
+      <div class="p2p-empty">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" style="opacity:.3;margin-bottom:12px"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <div>No offers for <strong>${currentCoin}</strong> with current filters.</div>
+        <div style="margin-top:4px;font-size:12px;color:var(--text-3)">Try changing the currency or payment method.</div>
+      </div>`;
+    return;
+  }
+
+  list.innerHTML = offers.map((o, i) => {
+    const av  = AVATAR_COLORS[i % AVATAR_COLORS.length];
+    const ini = o.trader.slice(0, 2).toUpperCase();
+    return `
+    <div class="p2p-offer-row">
+
+      <!-- Advertiser -->
+      <div class="p2p-col-advertiser">
+        <div class="p2p-avatar" style="background:${av};color:#0d0a02;font-size:12px;font-weight:800">${ini}</div>
+        <div class="p2p-trader-info">
+          <div class="p2p-trader-name">${o.trader}</div>
+          <div class="p2p-trader-meta">${o.trades.toLocaleString()} orders</div>
+          <div class="p2p-completion">
+            <div class="p2p-completion-bar">
+              <div class="p2p-completion-fill" style="width:${o.rating}%"></div>
+            </div>
+            <span class="p2p-rating">${o.rating}%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Price -->
+      <div class="p2p-col-price">
+        <span class="p2p-mob-label">Price</span>
+        <div class="p2p-price-cell">${fmtPrice(o.price, o.fiat)}</div>
+        <div class="p2p-price-fiat">per ${o.coin}</div>
+      </div>
+
+      <!-- Available -->
+      <div class="p2p-col-avail">
+        <span class="p2p-mob-label">Available</span>
+        <div class="p2p-avail-cell">${fmtAvail(o.available, o.coin)}</div>
+        <div class="p2p-avail-fiat">${fmtPrice(o.available * o.price, o.fiat)}</div>
+      </div>
+
+      <!-- Limits -->
+      <div class="p2p-col-limits">
+        <span class="p2p-mob-label">Limits</span>
+        <div class="p2p-limit-cell">${fmtLim(o)}</div>
+      </div>
+
+      <!-- Payment -->
+      <div class="p2p-col-payment">
+        <span class="p2p-mob-label">Payment</span>
+        <div>${paymentTags(o.payment)}</div>
+      </div>
+
+      <!-- Action -->
+      <div class="p2p-col-action">
+        <button class="${btnCls}" onclick="openTradeModal(${o.id})">
+          ${verb} ${o.coin}
+        </button>
+      </div>
+
+    </div>`;
+  }).join('');
+}
+
+function applyFilters() { renderOffers(); }
+
+// ─── Side & Coin ─────────────────────────────────────────────────────────────
+function setSide(side) {
+  currentSide = side;
+  document.getElementById('tabBuy').className  = 'p2p-side-tab buy'  + (side==='buy'  ? ' active' : '');
+  document.getElementById('tabSell').className = 'p2p-side-tab sell' + (side==='sell' ? ' active' : '');
+  renderOffers();
+}
+
+function setCoin(coin) {
+  currentCoin = coin;
+  document.querySelectorAll('.p2p-coin-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.coin === coin));
+  renderOffers();
+}
+
+// ─── Modal ───────────────────────────────────────────────────────────────────
+function openTradeModal(id) {
+  activeOffer = ALL_OFFERS.find(o => o.id === id);
+  if (!activeOffer) return;
+  const o    = activeOffer;
+  const isBuy = currentSide === 'buy';
+  const av    = AVATAR_COLORS[id % AVATAR_COLORS.length];
+
+  document.getElementById('modalTitle').textContent      = (isBuy?'Buy ':'Sell ') + o.coin + ' — ' + o.trader;
+  document.getElementById('modalAvatar').textContent     = o.trader.slice(0,2).toUpperCase();
+  document.getElementById('modalAvatar').style.background = av;
+  document.getElementById('modalAvatar').style.color     = '#0d0a02';
+  document.getElementById('modalAvatar').style.fontSize  = '13px';
+  document.getElementById('modalAvatar').style.fontWeight= '800';
+  document.getElementById('modalTrader').textContent     = o.trader;
+  document.getElementById('modalTraderMeta').textContent = `${o.trades.toLocaleString()} orders · ${o.rating}% completion`;
+  document.getElementById('modalPrice').textContent      = fmtPrice(o.price, o.fiat) + ' / ' + o.coin;
+  document.getElementById('modalAvailable').textContent  = fmtAvail(o.available, o.coin);
+  document.getElementById('modalLimits').textContent     = fmtLim(o);
+  document.getElementById('modalPayment').textContent    = o.payment.join(', ');
+  document.getElementById('fiatLabel').textContent       = isBuy ? `I will pay (${o.fiat})` : `I will receive (${o.fiat})`;
+  document.getElementById('cryptoLabel').textContent     = isBuy ? `I will receive (${o.coin})` : `I will send (${o.coin})`;
+  document.getElementById('p2pFiatAmt').value    = '';
+  document.getElementById('p2pCryptoAmt').value  = '';
+
+  const btn  = document.getElementById('btnConfirmTrade');
+  btn.className   = isBuy ? 'btn-p2p-confirm-buy' : 'btn-p2p-confirm-sell';
+  btn.textContent = isBuy ? `Confirm Buy ${o.coin}` : `Confirm Sell ${o.coin}`;
+
+  document.getElementById('p2pTradeModal').classList.add('open');
+}
+
+function closeTradeModal() {
+  document.getElementById('p2pTradeModal').classList.remove('open');
+  activeOffer = null;
+}
+
+document.getElementById('p2pTradeModal').addEventListener('click', e => {
+  if (e.target.id === 'p2pTradeModal') closeTradeModal();
+});
+document.addEventListener('keydown', e => { if (e.key==='Escape') closeTradeModal(); });
+
+function calcCrypto() {
+  if (!activeOffer) return;
+  const fiat = parseFloat(document.getElementById('p2pFiatAmt').value) || 0;
+  document.getElementById('p2pCryptoAmt').value = fiat > 0 ? (fiat / activeOffer.price).toFixed(6) : '';
+}
+function calcFiat() {
+  if (!activeOffer) return;
+  const crypto = parseFloat(document.getElementById('p2pCryptoAmt').value) || 0;
+  document.getElementById('p2pFiatAmt').value = crypto > 0 ? (crypto * activeOffer.price).toFixed(2) : '';
+}
+
+function confirmP2PTrade() {
+  const fiat   = parseFloat(document.getElementById('p2pFiatAmt').value)   || 0;
+  const crypto = parseFloat(document.getElementById('p2pCryptoAmt').value) || 0;
+  if (!fiat || !crypto) { document.getElementById('p2pFiatAmt').focus(); return; }
+  closeTradeModal();
+  alert(`Order placed!\n${currentSide==='buy'?'Buying':'Selling'} ${crypto.toFixed(6)} ${activeOffer?.coin}\nAmount: ${fiat.toFixed(2)} ${activeOffer?.fiat}\n\nEscrow flow coming soon.`);
+}
+
+function openCreateModal() {
+  alert('Create P2P offer — coming soon.\nSet your own price, limits and payment method.');
 }
 
 renderOffers();

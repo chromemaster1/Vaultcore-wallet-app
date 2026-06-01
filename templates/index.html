@@ -1,258 +1,369 @@
 {% extends "base.html" %}
-{% block title %}VaultCore Wallet — Home{% endblock %}
+{% block title %}Dashboard — VaultCore Exchange{% endblock %}
 
 {% block content %}
-{% if current_user %}
-<!-- Profile banner (shows when logged in) -->
-<section class="profile-banner">
-    <div class="profile-inner">
-    <img class="profile-avatar" src="{{ url_for('static', filename='images/avatars/' + current_user.user_id + '.png') }}" onerror="this.style.display='none'" alt="avatar" />
-    <div class="profile-name">{{ current_user.full_name or current_user.email }}</div>
-  </div>
-</section>
-{% endif %}
 
-<!-- balance moved into left column (see below) -->
-<!-- Left sidebar (fixed) containing only user id and balance card -->
-{% if current_user %}
-<div id="left-sidebar" aria-hidden="false">
-  <div class="profile-compact">
-    <div class="profile-compact-id">User</div>
-    <div class="profile-compact-value">{{ current_user.full_name or current_user.email }}</div>
+<!-- ═══ Global Market Stats Bar ═══ -->
+<div class="xstats-bar" id="xStatsBar">
+  <div class="xstat">
+    <span class="xstat-label">Cryptos</span>
+    <span class="xstat-value">10,000+</span>
   </div>
+  <div class="xstat">
+    <span class="xstat-label">Market Cap</span>
+    <span class="xstat-value" id="xStatMcap">Loading…</span>
+  </div>
+  <div class="xstat">
+    <span class="xstat-label">24h Volume</span>
+    <span class="xstat-value" id="xStatVol">—</span>
+  </div>
+  <div class="xstat">
+    <span class="xstat-label">BTC</span>
+    <span class="xstat-value" id="xStatBtc">—</span>
+  </div>
+  <div class="xstat">
+    <span class="xstat-label">BTC 24h</span>
+    <span class="xstat-value" id="xStatBtcChg">—</span>
+  </div>
+  <div class="xstat">
+    <span class="xstat-label">ETH</span>
+    <span class="xstat-value" id="xStatEth">—</span>
+  </div>
+  <div class="xstat">
+    <span class="xstat-label">Fear &amp; Greed</span>
+    <span class="xstat-value" style="color:var(--warning)">Greed</span>
+  </div>
+</div>
 
-  <section class="balance-section">
-    <div class="balance-card">
-      <div class="balance-header">
-        <div class="balance-label">Total Portfolio Value</div>
-        <button class="btn-hide-balance" id="btnHideBalance" onclick="toggleBalanceVisibility()">
-          <span id="hideIcon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>
-        </button>
-      </div>
-      <div class="balance-display" id="balanceDisplay">
-        <span class="balance-amount" id="balanceAmount">${{ '{:,.2f}'.format(total_balance or 0.0) }}</span>
-        <span class="balance-hidden" id="balanceHidden">••••••</span>
-      </div>
-      <div class="balance-change">
-        <span class="change-percent up">+2.45%</span>
-        <span class="change-label">Last 24h</span>
-      </div>
-    </div>
-  </section>
+<!-- ═══ News Ticker ═══ -->
+{% if news %}
+<div class="news-ticker-wrap dash-news">
+  <span class="ticker-label">NEWS</span>
+  <div class="ticker-track">
+    {% for item in news %}
+      <a class="ticker-item" href="{{ item.url }}" target="_blank" rel="noopener">
+        <span class="ticker-source">{{ item.source }}</span>{{ item.title }}
+      </a>
+    {% endfor %}
+    {% for item in news %}
+      <a class="ticker-item" href="{{ item.url }}" target="_blank" rel="noopener">
+        <span class="ticker-source">{{ item.source }}</span>{{ item.title }}
+      </a>
+    {% endfor %}
+  </div>
 </div>
 {% endif %}
 
-<!-- ═══════════════════════════════════════════
-     NEWS TICKER
-════════════════════════════════════════════ -->
-{% if news_error %}
-  <div class="alert-banner alert-error">
-    <span class="alert-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
-    <strong>News unavailable:</strong> {{ news_error }}
-  </div>
-{% elif news %}
-  <div class="news-ticker-wrap">
-    <span class="ticker-label">LIVE</span>
-    <div class="ticker-track">
-      {% for item in news %}
-        <a class="ticker-item" href="{{ item.url }}" target="_blank" rel="noopener">
-          <span class="ticker-source">{{ item.source }}</span>
-          {{ item.title }}
-        </a>
-      {% endfor %}
-      {% for item in news %}
-        <a class="ticker-item" href="{{ item.url }}" target="_blank" rel="noopener">
-          <span class="ticker-source">{{ item.source }}</span>
-          {{ item.title }}
-        </a>
-      {% endfor %}
+<!-- ═══ Dashboard Two-Column Grid ═══ -->
+<div class="dash-grid">
+
+  <!-- LEFT — Portfolio Overview -->
+  <div class="dash-portfolio">
+    <div class="dash-section-label">
+      Portfolio Overview
+      <span style="font-size:11px;color:var(--text-3);font-weight:400;text-transform:none;letter-spacing:0">
+        {% if current_user %}{{ current_user.full_name or current_user.email }}{% endif %}
+      </span>
+    </div>
+
+    <div class="dash-balance">
+      <div class="dash-balance-row">
+        <span class="dash-balance-lbl">Total Balance (USD)</span>
+        <button class="btn-hide-balance" id="btnHideBalance" onclick="toggleBalanceVisibility()" style="margin-left:8px">
+          <span id="hideIcon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>
+        </button>
+      </div>
+      <div class="dash-balance-amount" id="balanceAmount">${{ '{:,.2f}'.format(total_balance or 0.0) }}</div>
+      <div class="dash-balance-hidden" id="balanceHidden">••••••••••</div>
+      <div class="dash-pnl">
+        <span class="dash-pnl-value chg-up">+2.45%</span>
+        <span class="dash-pnl-value" id="pnlDollar" style="color:var(--success)"></span>
+        <span class="dash-pnl-label">24h change</span>
+      </div>
+    </div>
+
+    <div class="dash-actions">
+      <a href="{{ url_for('receive') }}" class="dash-action buy">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
+        Deposit
+      </a>
+      <a href="{{ url_for('withdraw') }}" class="dash-action sell">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+        Withdraw
+      </a>
+      <a href="{{ url_for('send') }}" class="dash-action ghost">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        Transfer
+      </a>
+      <a href="{{ url_for('market') }}" class="dash-action primary">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Trade
+      </a>
+    </div>
+
+    <!-- Mini holdings preview -->
+    <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text-3);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
+        My Assets
+        <a href="{{ url_for('wallet') }}" style="font-size:11px;color:var(--gold);text-decoration:none;font-weight:600;text-transform:none;letter-spacing:0">View all →</a>
+      </div>
+      <div id="dashAssets">
+        <div class="loading-state" style="padding:16px 0;font-size:12px">Loading assets…</div>
+      </div>
     </div>
   </div>
-{% endif %}
 
+  <!-- RIGHT — Top Movers + Watchlist -->
+  <div class="dash-right">
 
-<!-- ═══════════════════════════════════════════
-     LARGE QUICK-ACCESS MENU
-════════════════════════════════════════════ -->
-  <!-- ═══════════════════════════════════════════
-     LARGE QUICK-ACCESS MENU
-  ════════════════════════════════════════════ -->
-  <section class="quick-menu">
-  <h2 class="quick-menu-title">What would you like to do?</h2>
-  <div class="quick-menu-grid">
-
-    <a href="{{ url_for('send') }}" class="qm-card">
-      <div class="qm-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="22" y1="2" x2="11" y2="13"></line>
-          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-        </svg>
+    <!-- Top Movers -->
+    <div class="dash-card">
+      <div class="dash-card-header">
+        <span class="dash-card-title">Markets</span>
+        <div class="dash-tabs">
+          <button class="dash-tab active" id="tabGainers" onclick="showMovers('gainers')">Gainers</button>
+          <button class="dash-tab" id="tabLosers"  onclick="showMovers('losers')">Losers</button>
+          <button class="dash-tab" id="tabNew"     onclick="showMovers('new')">New</button>
+        </div>
       </div>
-      <div class="qm-label">Send</div>
-      <div class="qm-sub">Transfer crypto to any wallet</div>
-    </a>
-
-    <a href="{{ url_for('receive') }}" class="qm-card">
-      <div class="qm-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="8 17 12 21 16 17"></polyline>
-          <line x1="12" y1="12" x2="12" y2="21"></line>
-          <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"></path>
-        </svg>
+      <div id="dashMovers">
+        <div class="loading-state" style="padding:16px;font-size:12px">Loading…</div>
       </div>
-      <div class="qm-label">Receive</div>
-      <div class="qm-sub">Get your deposit address</div>
-    </a>
+      <a href="{{ url_for('market') }}" style="display:block;text-align:center;padding:10px;font-size:12px;color:var(--gold);text-decoration:none;border-top:1px solid var(--border)">
+        View Full Market →
+      </a>
+    </div>
 
-    <a href="{{ url_for('market') }}" class="qm-card">
-      <div class="qm-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
-        </svg>
+    <!-- Watchlist -->
+    <div class="dash-card" id="watchlistSection" style="display:none">
+      <div class="dash-card-header">
+        <span class="dash-card-title" style="display:flex;align-items:center;gap:6px">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5" style="color:var(--gold)"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          Watchlist
+        </span>
+        <a href="{{ url_for('market') }}" style="font-size:11px;color:var(--gold);text-decoration:none">Manage</a>
       </div>
-      <div class="qm-label">Market</div>
-      <div class="qm-sub">Live prices &amp; trading pairs</div>
-    </a>
+      <div id="watchlistHome"></div>
+    </div>
 
-    <a href="{{ url_for('wallet') }}" class="qm-card">
-      <div class="qm-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-          <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-        </svg>
+    <!-- P2P Promo -->
+    <a href="{{ url_for('p2p_market') }}" class="dash-card" style="text-decoration:none;display:block;padding:16px;background:linear-gradient(135deg,var(--surface-1) 0%,rgba(201,168,76,.07) 100%);">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="width:36px;height:36px;background:var(--gold-a10);border:1px solid var(--border-gold);border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;color:var(--gold);flex-shrink:0">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+        </div>
+        <div>
+          <div style="font-size:13px;font-weight:700;color:var(--text-1)">P2P Trading</div>
+          <div style="font-size:12px;color:var(--text-3);margin-top:2px">Buy &amp; sell directly with users</div>
+        </div>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="margin-left:auto;color:var(--text-3)"><polyline points="9 18 15 12 9 6"/></svg>
       </div>
-      <div class="qm-label">Wallet</div>
-      <div class="qm-sub">View balances &amp; assets</div>
     </a>
 
   </div>
-</section>
+</div>
 
-
-<!-- ═══════════════════════════════════════════
-     LIVE MARKET WIDGET  (3 × 5 cards)
-════════════════════════════════════════════ -->
-<section class="market-widget-section">
-  <div class="widget-header">
-    <h2 class="widget-title">Live Market</h2>
-    <a href="{{ url_for('market') }}" class="widget-link">View all pairs →</a>
+<!-- ═══ Live Market Table ═══ -->
+<div class="dash-market">
+  <div class="dash-section-label" style="margin-bottom:0;padding:14px 16px;background:var(--surface-2);border-radius:var(--r-lg) var(--r-lg) 0 0;border:1px solid var(--border);border-bottom:none">
+    Live Market
+    <a href="{{ url_for('market') }}">Full Market →</a>
   </div>
-
   {% if market_error %}
-    <div class="alert-banner alert-error">
+    <div class="alert-banner alert-error" style="margin:0">
       <span class="alert-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
-      <strong>Market data unavailable:</strong> {{ market_error }}
+      <strong>Market data unavailable.</strong> Configure CMC_PRO_API_KEY.
     </div>
   {% elif pages %}
-    <div class="widget-pages">
+    <div class="widget-pages" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0;border:1px solid var(--border);border-radius:0 0 var(--r-lg) var(--r-lg);overflow:hidden">
       {% for page in pages %}
-      <div class="widget-card">
+      <div class="widget-card" style="border:none;border-right:1px solid var(--border);border-radius:0">
         <div class="widget-card-head">
-          <span>Pair</span>
-          <span>Price</span>
-          <span>24h</span>
+          <span>Pair</span><span>Price</span><span>24h</span>
         </div>
         {% for coin in page %}
-        <div class="widget-row">
-          <span class="coin-pair">{{ coin.pair }}</span>
+        <a href="{{ url_for('market') }}" class="widget-row" style="text-decoration:none;display:grid;grid-template-columns:1fr 1fr 70px;gap:8px;padding:9px 16px;border-bottom:1px solid var(--border);transition:background var(--t-fast)">
+          <span class="coin-pair" style="display:flex;align-items:center;gap:6px">
+            <span class="coin-icon {{ coin.pair.split('/')[0] | lower }} sm">{{ coin.pair.split('/')[0] }}</span>
+            {{ coin.pair }}
+          </span>
           <span class="coin-price">
-            {% if coin.price < 1 %}
-              ${{ "%.4f"|format(coin.price) }}
-            {% else %}
-              ${{ "{:,.2f}".format(coin.price) }}
-            {% endif %}
+            {% if coin.price < 1 %}${{ "%.4f"|format(coin.price) }}
+            {% else %}${{ "{:,.2f}".format(coin.price) }}{% endif %}
           </span>
           <span class="coin-chg {% if coin.change_24h >= 0 %}chg-up{% else %}chg-down{% endif %}">
             {% if coin.change_24h >= 0 %}+{% endif %}{{ "%.2f"|format(coin.change_24h) }}%
           </span>
-        </div>
+        </a>
         {% endfor %}
       </div>
       {% endfor %}
     </div>
   {% else %}
-    <div class="alert-banner alert-warn">
-      <span class="alert-icon">ℹ</span>
-      No market data to display yet.
+    <div style="background:var(--surface-1);border:1px solid var(--border);border-radius:0 0 var(--r-lg) var(--r-lg);padding:32px;text-align:center;color:var(--text-3);font-size:13px">
+      Market data unavailable. Configure your API key in .env.
     </div>
   {% endif %}
-
-</section>
-<!-- ═══════════════════════════════════════════
-  WATCHLIST (home page)
-════════════════════════════════════════════ -->
- <section class="watchlist-section" id="watchlistSection" style="display:none">
-  <div class="widget-header">
-    <h2 class="widget-title" style="display:flex;align-items:center;gap:7px"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5" style="color:var(--gold)"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> Watchlist</h2>
-    <a href="{{ url_for('market') }}" class="widget-link">Manage →</a>
-  </div>
-  <div id="watchlistHome" class="watchlist-home">
-    <!-- populated by JS -->
-  </div>
-</section>
-
+</div>
 
 <script>
+// ── Balance toggle ──
 let balanceVisible = true;
-
 function toggleBalanceVisibility() {
   balanceVisible = !balanceVisible;
-  const amountEl = document.getElementById('balanceAmount');
-  const hiddenEl = document.getElementById('balanceHidden');
-  const iconEl   = document.getElementById('hideIcon');
+  document.getElementById('balanceAmount').style.display = balanceVisible ? '' : 'none';
+  document.getElementById('balanceHidden').style.display = balanceVisible ? 'none' : '';
+  document.getElementById('hideIcon').innerHTML = balanceVisible
+    ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
+    : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+}
 
-  if (balanceVisible) {
-    amountEl.style.display = 'inline';
-    hiddenEl.style.display = 'none';
-    iconEl.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
-  } else {
-    amountEl.style.display = 'none';
-    hiddenEl.style.display = 'inline';
-    iconEl.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+// ── Market stats ──
+async function loadMarketStats() {
+  try {
+    const res  = await fetch('/api/market-data');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!Array.isArray(data) || !data.length) return;
+
+    const fmt = p => p >= 1e12 ? '$' + (p/1e12).toFixed(2) + 'T'
+                   : p >= 1e9  ? '$' + (p/1e9).toFixed(1) + 'B'
+                   : '$' + p.toLocaleString();
+    const fmtP = p => p < 1 ? '$' + p.toFixed(4) : '$' + p.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+
+    const btc = data.find(c => c.symbol === 'BTC');
+    const eth = data.find(c => c.symbol === 'ETH');
+
+    const totalMcap = data.reduce((a,c) => a + (c.market_cap || 0), 0);
+    const totalVol  = data.reduce((a,c) => a + (c.volume_24h || 0), 0);
+
+    if (btc) {
+      document.getElementById('xStatBtc').textContent = fmtP(btc.price);
+      const chgEl = document.getElementById('xStatBtcChg');
+      const up = btc.change_24h >= 0;
+      chgEl.textContent  = (up?'+':'') + btc.change_24h.toFixed(2) + '%';
+      chgEl.className    = 'xstat-value ' + (up ? 'chg-up' : 'chg-down');
+    }
+    if (eth) document.getElementById('xStatEth').textContent = fmtP(eth.price);
+    if (totalMcap) document.getElementById('xStatMcap').textContent = fmt(totalMcap);
+    if (totalVol)  document.getElementById('xStatVol').textContent  = fmt(totalVol);
+
+    // Top movers
+    window._marketData = data;
+    showMovers('gainers');
+    loadDashAssets(data);
+  } catch(e) {
+    console.debug('market stats failed', e);
   }
 }
-async function loadHomeWatchlist() {
-  const watchlist = new Set(JSON.parse(localStorage.getItem('watchlist') || '[]'));
-  const section = document.getElementById('watchlistSection');
-  const container = document.getElementById('watchlistHome');
 
-  if (!watchlist || watchlist.size === 0) {
-    if (section) section.style.display = 'none';
-    return;
+// ── Top Movers ──
+let currentMoverTab = 'gainers';
+function showMovers(type) {
+  currentMoverTab = type;
+  ['gainers','losers','new'].forEach(t => {
+    const btn = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (btn) btn.classList.toggle('active', t === type);
+  });
+
+  const data = window._marketData;
+  if (!data) return;
+
+  const fmtP = p => p < 1 ? '$' + p.toFixed(4) : '$' + p.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+
+  let list;
+  if (type === 'gainers') {
+    list = [...data].sort((a,b) => b.change_24h - a.change_24h).slice(0, 8);
+  } else if (type === 'losers') {
+    list = [...data].sort((a,b) => a.change_24h - b.change_24h).slice(0, 8);
+  } else {
+    list = data.slice(0, 8);
   }
 
-  if (section) section.style.display = 'block';
+  document.getElementById('dashMovers').innerHTML = list.map(c => {
+    const up  = c.change_24h >= 0;
+    const chg = (up?'+':'') + c.change_24h.toFixed(2) + '%';
+    const sym = c.pair.split('/')[0];
+    return `
+      <a href="/market" class="mover-row">
+        <span class="coin-icon ${sym.toLowerCase()} sm" style="flex-shrink:0">${sym}</span>
+        <span class="mover-name">${c.pair}</span>
+        <span class="mover-price">${fmtP(c.price)}</span>
+        <span class="mover-chg ${up?'chg-up':'chg-down'}">${chg}</span>
+      </a>`;
+  }).join('');
+}
 
+// ── Dashboard Assets ──
+async function loadDashAssets(marketData) {
   try {
-    const res = await fetch('/api/market-data');
-    if (!res.ok) throw new Error('market API failed');
+    const res = await fetch('/api/wallet-summary');
+    if (!res.ok) return;
     const data = await res.json();
-    const filtered = data.filter(c => watchlist.has(c.symbol)).slice(0, 5);
+    const holdings = data.holdings || {};
 
-    const html = filtered.map(c => {
-      const up = c.change_24h >= 0;
-      const chg = (up?'+':'') + c.change_24h.toFixed(2) + '%';
+    if (!Object.keys(holdings).length) {
+      document.getElementById('dashAssets').innerHTML =
+        '<div style="padding:12px 0;font-size:12px;color:var(--text-3)">No assets yet. Deposit to get started.</div>';
+      return;
+    }
+
+    const fmtP = p => p < 1 ? '$' + p.toFixed(4) : '$' + p.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+
+    const html = Object.entries(holdings).slice(0, 6).map(([sym, h]) => {
+      const up = h.change_24h >= 0;
+      const chg = (up?'+':'') + h.change_24h.toFixed(2) + '%';
       return `
-        <div class="watchlist-item">
-          <span class="wl-pair">${c.pair}</span>
-          <span class="wl-price">$${c.price < 1 ? c.price.toFixed(4) : c.price.toFixed(2)}</span>
-          <span class="wl-chg ${up? 'chg-up' : 'chg-down'}">${chg}</span>
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+          <span class="coin-icon ${sym.toLowerCase()} sm">${sym}</span>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:700;color:var(--text-1)">${sym}</div>
+            <div style="font-size:11px;color:var(--text-3);font-family:'DM Mono',monospace">${h.balance.toFixed(6)}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:13px;font-weight:600;color:var(--text-1);font-family:'DM Mono',monospace">$${h.usd_value.toFixed(2)}</div>
+            <div style="font-size:11px;font-weight:600;font-family:'DM Mono',monospace" class="${up?'chg-up':'chg-down'}">${chg}</div>
+          </div>
         </div>`;
     }).join('');
 
-    if (container) container.innerHTML = html || '<p class="empty-state">No watchlist items</p>';
+    document.getElementById('dashAssets').innerHTML = html;
   } catch(e) {
-    console.error('Failed to load watchlist:', e);
-    if (section) section.style.display = 'none';
+    document.getElementById('dashAssets').innerHTML =
+      '<div style="padding:12px 0;font-size:12px;color:var(--text-3)">Unable to load assets.</div>';
   }
 }
 
-// Call on page load
-loadHomeWatchlist();
+// ── Watchlist ──
+async function loadHomeWatchlist() {
+  const watchlist = new Set(JSON.parse(localStorage.getItem('watchlist') || '[]'));
+  const section   = document.getElementById('watchlistSection');
+  const container = document.getElementById('watchlistHome');
+  if (!watchlist.size) { if (section) section.style.display = 'none'; return; }
+  if (section) section.style.display = 'block';
+
+  try {
+    const data = window._marketData;
+    if (!data) return;
+    const filtered = data.filter(c => watchlist.has(c.symbol)).slice(0, 6);
+    const fmtP = p => p < 1 ? '$' + p.toFixed(4) : '$' + p.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+    container.innerHTML = filtered.map(c => {
+      const up  = c.change_24h >= 0;
+      const chg = (up?'+':'') + c.change_24h.toFixed(2) + '%';
+      const sym = c.pair.split('/')[0];
+      return `
+        <a href="/market" class="mover-row">
+          <span class="coin-icon ${sym.toLowerCase()} sm">${sym}</span>
+          <span class="mover-name">${c.pair}</span>
+          <span class="mover-price">${fmtP(c.price)}</span>
+          <span class="mover-chg ${up?'chg-up':'chg-down'}">${chg}</span>
+        </a>`;
+    }).join('') || '<div class="empty-state" style="padding:16px;font-size:12px">Star coins in Markets to watch them.</div>';
+  } catch(e) { if (section) section.style.display = 'none'; }
+}
+
+loadMarketStats();
+setTimeout(loadHomeWatchlist, 500);
 </script>
 
 {% endblock %}

@@ -1467,21 +1467,19 @@ def admin_coming_soon_state():
 
 @app.route('/')
 def home():
-    """Home page - requires login."""
+    """Home page."""
     user = get_current_user()
-
-    # If not logged in, render register/login page
-    if not user:
-        log.info("Home - no user, redirecting to login")
-        return redirect(url_for('login'))
 
     market_data, market_err = get_market_data(limit=15)
     news, news_err          = get_crypto_news()
     pages = [market_data[i:i+5] for i in range(0, len(market_data), 5)] if market_data else []
 
 
+    if not user:
+        log.info("Home - no user, redirecting to login")
+        return redirect(url_for('login'))
+
     log.info("Home - user %s authenticated", user.email)
-    # compute total portfolio value (sum of all wallets)
     total_balance = sum((w.balance or 0.0) for w in user.wallets) if user.wallets else 0.0
 
     return render_template(
@@ -2243,10 +2241,6 @@ def api_current_user():
 def settings():
     """Render settings page."""
     user = get_current_user()
-
-    if not user:
-        return redirect(url_for('login'))
-
     return render_template('settings.html', role=user.role, networks=NETWORKS)
 
 

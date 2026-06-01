@@ -66,7 +66,7 @@ async function loadWallet() {
       const up = h.change_24h >= 0;
       return `
         <div class="holding-card">
-          <div class="holding-icon">${sym}</div>
+          <div class="holding-icon coin-icon ${sym.toLowerCase()}">${sym}</div>
           <div class="holding-info">
             <div class="holding-name">${sym}</div>
             <div class="holding-amount">${h.balance.toFixed(8)} ${sym}</div>

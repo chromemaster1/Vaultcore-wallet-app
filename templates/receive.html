@@ -15,7 +15,7 @@
     <div class="network-selector-grid">
       {% for symbol, info in networks.items() %}
       <div class="network-card" onclick="selectCrypto('{{ symbol }}')">
-        <div class="network-card-icon">{{ symbol }}</div>
+        <div class="network-card-icon coin-icon {{ symbol | lower }} lg">{{ symbol }}</div>
         <div class="network-card-name">{{ info.name }}</div>
         <div class="network-card-net">{{ info.network }}</div>
       </div>
@@ -34,7 +34,7 @@
 
     <!-- crypto info header -->
     <div class="crypto-header">
-      <div class="crypto-symbol-big" id="cryptoSymbol">BTC</div>
+      <div class="crypto-symbol-big coin-icon btc lg" id="cryptoSymbol">BTC</div>
       <div class="crypto-info">
         <h3 class="crypto-name" id="cryptoName">Bitcoin</h3>
         <p class="crypto-network" id="cryptoNetwork">Bitcoin Mainnet</p>
@@ -53,8 +53,13 @@
     <!-- QR code card -->
     <div class="qr-card">
       <div class="qr-label">Scan QR Code</div>
-      <div class="qr-container">
-        <img id="qrImage" src="" alt="QR Code" class="qr-image" />
+      <div class="qr-container" id="qrContainer">
+        <div id="qrLoading" style="width:180px;height:180px;display:flex;align-items:center;justify-content:center;color:var(--text-3);font-size:13px">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.4"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        </div>
+        <img id="qrImage" src="" alt="QR Code" class="qr-image" style="display:none"
+             onload="this.style.display='block';document.getElementById('qrLoading').style.display='none'"
+             onerror="document.getElementById('qrLoading').textContent='QR unavailable'" />
       </div>
     </div>
 
@@ -135,7 +140,11 @@ async function selectCrypto(symbol) {
   document.getElementById('cryptoNetwork').textContent  = '';
   document.getElementById('warnSymbol').textContent     = symbol;
   document.getElementById('addressDisplay').textContent = 'Loading address…';
-  document.getElementById('qrImage').src = '';
+  const qrImg = document.getElementById('qrImage');
+  qrImg.style.display = 'none';
+  qrImg.src = '';
+  document.getElementById('qrLoading').style.display = 'flex';
+  document.getElementById('qrLoading').innerHTML = '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.4"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
 
   try {
     const res  = await fetch(`/api/receive/${symbol}`);
@@ -148,7 +157,9 @@ async function selectCrypto(symbol) {
     currentData = data;
 
     // populate UI
-    document.getElementById('cryptoSymbol').textContent  = data.symbol;
+    const symEl = document.getElementById('cryptoSymbol');
+    symEl.textContent  = data.symbol;
+    symEl.className = `crypto-symbol-big coin-icon ${data.symbol.toLowerCase()} lg`;
     document.getElementById('cryptoName').textContent    = data.name;
     document.getElementById('cryptoNetwork').textContent = data.network;
     document.getElementById('warnSymbol').textContent    = data.symbol;

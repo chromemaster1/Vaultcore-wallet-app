@@ -221,7 +221,10 @@ function renderTable(data) {
           </button>
         </td>
         <td class="td-rank">#${c.rank}</td>
-        <td class="td-pair">${c.pair}</td>
+        <td class="td-pair" style="display:flex;align-items:center;gap:8px">
+          <span class="coin-icon ${c.pair.split('/')[0].toLowerCase()} sm">${c.pair.split('/')[0]}</span>
+          ${c.pair}
+        </td>
         <td class="td-name">${c.name}</td>
         <td class="td-price">${fmtPrice(c.price)}</td>
         <td class="td-chg ${up?'chg-up':'chg-down'}">${chg}</td>

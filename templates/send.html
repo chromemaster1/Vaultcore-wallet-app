@@ -24,7 +24,7 @@
       <div class="network-tile" data-network="{{ key }}"
           data-symbol="{{ net.symbol }}"
           onclick="selectNetwork('{{ key }}', '{{ net.symbol }}', '{{ net.label }}')">
-        <div class="network-symbol">{{ net.symbol }}</div>
+        <div class="network-symbol coin-icon {{ net.symbol | lower }} sm" style="margin:0 auto 8px">{{ net.symbol }}</div>
         <div class="network-name">{{ net.label }}</div>
         <div class="network-fee">Fee ≈ ${{ "%.2f"|format(net.fee) }}</div>
       </div>
@@ -38,7 +38,7 @@
       {% for key, net in all_networks.items() %}
       <div class="network-list-item"
           onclick="selectNetwork('{{ key }}', '{{ net.symbol }}', '{{ net.label }}')">
-        <div class="network-list-icon">{{ net.symbol }}</div>
+        <div class="network-list-icon coin-icon {{ net.symbol | lower }}">{{ net.symbol }}</div>
         <div class="network-list-info">
           <div class="network-list-name">{{ net.label }}</div>
           <div class="network-list-fee">Network fee ≈ ${{ "%.2f"|format(net.fee) }}</div>
