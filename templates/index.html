@@ -26,7 +26,7 @@
       <div class="balance-header">
         <div class="balance-label">Total Portfolio Value</div>
         <button class="btn-hide-balance" id="btnHideBalance" onclick="toggleBalanceVisibility()">
-          <span id="hideIcon">👁</span>
+          <span id="hideIcon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>
         </button>
       </div>
       <div class="balance-display" id="balanceDisplay">
@@ -47,7 +47,7 @@
 ════════════════════════════════════════════ -->
 {% if news_error %}
   <div class="alert-banner alert-error">
-    <span class="alert-icon">⚠</span>
+    <span class="alert-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
     <strong>News unavailable:</strong> {{ news_error }}
   </div>
 {% elif news %}
@@ -144,7 +144,7 @@
 
   {% if market_error %}
     <div class="alert-banner alert-error">
-      <span class="alert-icon">⚠</span>
+      <span class="alert-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
       <strong>Market data unavailable:</strong> {{ market_error }}
     </div>
   {% elif pages %}
@@ -187,7 +187,7 @@
 ════════════════════════════════════════════ -->
  <section class="watchlist-section" id="watchlistSection" style="display:none">
   <div class="widget-header">
-    <h2 class="widget-title">⭐ Watchlist</h2>
+    <h2 class="widget-title" style="display:flex;align-items:center;gap:7px"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5" style="color:var(--gold)"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> Watchlist</h2>
     <a href="{{ url_for('market') }}" class="widget-link">Manage →</a>
   </div>
   <div id="watchlistHome" class="watchlist-home">
@@ -208,11 +208,11 @@ function toggleBalanceVisibility() {
   if (balanceVisible) {
     amountEl.style.display = 'inline';
     hiddenEl.style.display = 'none';
-    iconEl.textContent = '👁';
+    iconEl.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
   } else {
     amountEl.style.display = 'none';
     hiddenEl.style.display = 'inline';
-    iconEl.textContent = '👁‍🗨';
+    iconEl.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
   }
 }
 async function loadHomeWatchlist() {

@@ -2,117 +2,204 @@
 {% block title %}About — VaultCore Wallet{% endblock %}
 {% block content %}
 
-<section class="about-container">
+<div class="about-page">
 
-  <!-- ABOUT CARD -->
-  <div class="card">
-    <h1 class="card-title">About VaultCore Wallet</h1>
-    <p class="card-text">
-      VaultCore Wallet is a secure and user-friendly cryptocurrency wallet designed to help you manage your digital assets with ease.
-    </p>
-    <p class="card-text">
-      Whether you're a seasoned crypto enthusiast or just getting started, our wallet provides the tools you need to store, send, and receive cryptocurrencies safely.
-    </p>
-    <p class="card-text">
-      We prioritize security, privacy, and user experience while delivering a seamless crypto experience.
-    </p>
+  <!-- ═══ HERO ═══ -->
+  <div class="about-hero">
+    <div class="about-hero-bg"></div>
+    <div class="about-hero-content">
+      <div class="about-hero-badge">Est. 2023 · San Francisco</div>
+      <h1 class="about-hero-title">The Wallet Built for<br><span class="about-hero-highlight">Serious Crypto.</span></h1>
+      <p class="about-hero-desc">VaultCore combines institutional-grade security with a premium trading experience — so you can manage, send, and grow your digital wealth with confidence.</p>
+      <div class="about-hero-actions">
+        <a href="{{ url_for('register') }}" class="about-cta-primary">Get Started</a>
+        <a href="{{ url_for('support') }}"  class="about-cta-ghost">Talk to Us</a>
+      </div>
+    </div>
   </div>
 
-  <!-- TEAM CARD -->
-  <div class="card">
-    <h2 class="card-title">Our Team</h2>
-    <p class="card-text">
-      We are a passionate team of developers, designers, and crypto enthusiasts committed to building a modern crypto experience.
-    </p>
-    <p class="card-text">
-      Our focus is continuous innovation, simplicity, and trust.
-    </p>
+  <!-- ═══ STATS ═══ -->
+  <div class="about-stats-row">
+    <div class="about-stat-item">
+      <div class="about-stat-number">10<span class="about-stat-plus">+</span></div>
+      <div class="about-stat-divider"></div>
+      <div class="about-stat-label">Supported Networks</div>
+    </div>
+    <div class="about-stat-sep"></div>
+    <div class="about-stat-item">
+      <div class="about-stat-number">256<span class="about-stat-suffix">-bit</span></div>
+      <div class="about-stat-divider"></div>
+      <div class="about-stat-label">AES Encryption</div>
+    </div>
+    <div class="about-stat-sep"></div>
+    <div class="about-stat-item">
+      <div class="about-stat-number">24<span class="about-stat-suffix">/7</span></div>
+      <div class="about-stat-divider"></div>
+      <div class="about-stat-label">Live Support</div>
+    </div>
+    <div class="about-stat-sep"></div>
+    <div class="about-stat-item">
+      <div class="about-stat-number">0<span class="about-stat-suffix">%</span></div>
+      <div class="about-stat-divider"></div>
+      <div class="about-stat-label">Hidden Fees</div>
+    </div>
   </div>
 
-  <!-- CONTACT INFO CARD -->
-  <div class="card">
-    <h2 class="card-title">Contact Us</h2>
-    <p class="card-text">
-      Have questions or feedback? Reach out to us anytime.
-    </p>
-    <p class="card-text">
-      Email: <a href="mailto:info@vaultcore.com">info@vaultcore.com</a>
-    </p>
+  <!-- ═══ FEATURES ═══ -->
+  <div class="about-features-section">
+    <div class="about-section-label">What we offer</div>
+    <h2 class="about-section-heading">Everything you need.<br>Nothing you don't.</h2>
+
+    <div class="about-features-grid">
+      <div class="about-feature-card">
+        <div class="about-feature-num">01</div>
+        <div class="about-feature-icon-wrap">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+        <h3>Bank-Level Security</h3>
+        <p>AES-256 encryption, TOTP two-factor authentication, and end-to-end secure key storage on every account.</p>
+      </div>
+      <div class="about-feature-card">
+        <div class="about-feature-num">02</div>
+        <div class="about-feature-icon-wrap">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </div>
+        <h3>Instant Transfers</h3>
+        <p>Send across Bitcoin, Ethereum, BNB, Solana, Tron, XRP and more — with live fee estimates and instant confirmations.</p>
+      </div>
+      <div class="about-feature-card">
+        <div class="about-feature-num">03</div>
+        <div class="about-feature-icon-wrap">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        </div>
+        <h3>Live Market Data</h3>
+        <p>Real-time candlestick charts powered by Binance WebSocket streams, with sortable tables and a personal watchlist.</p>
+      </div>
+      <div class="about-feature-card">
+        <div class="about-feature-num">04</div>
+        <div class="about-feature-icon-wrap">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        </div>
+        <h3>Bank Withdrawals</h3>
+        <p>Withdraw to any local or international bank account with automatic multi-currency conversion and Paystack integration.</p>
+      </div>
+      <div class="about-feature-card">
+        <div class="about-feature-num">05</div>
+        <div class="about-feature-icon-wrap">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <h3>Paper Trading</h3>
+        <p>Practice trading strategies risk-free with simulated order execution before committing real capital.</p>
+      </div>
+      <div class="about-feature-card">
+        <div class="about-feature-num">06</div>
+        <div class="about-feature-icon-wrap">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <h3>P2P Trading</h3>
+        <p>Trade directly with other users peer-to-peer, with built-in escrow and dispute resolution powered by our support team.</p>
+      </div>
+    </div>
   </div>
 
-  <!-- CONTACT FORM CARD -->
-  <div class="card form-card">
-    <h2 class="card-title">Send a Message</h2>
+  <!-- ═══ MISSION ═══ -->
+  <div class="about-two-col">
+    <div class="about-mission-card">
+      <div class="about-section-label">Our mission</div>
+      <h2>Finance should work for everyone.</h2>
+      <p>We built VaultCore because crypto infrastructure was either too complex, too insecure, or too expensive. Our goal is to give every person — regardless of experience — a wallet that feels powerful, safe, and effortless.</p>
+      <p>We don't hide fees, we don't sell your data, and we never compromise on security. That's the standard we hold ourselves to.</p>
+      <div class="about-mission-values">
+        <div class="about-value"><span class="about-value-dot"></span>Transparent fees</div>
+        <div class="about-value"><span class="about-value-dot"></span>Zero data selling</div>
+        <div class="about-value"><span class="about-value-dot"></span>Open communication</div>
+      </div>
+    </div>
+    <div class="about-team-card">
+      <div class="about-section-label">The team</div>
+      <h2>Built by people who use crypto.</h2>
+      <p>We're engineers, traders, and security researchers who got tired of bad wallets. Every feature in VaultCore was born out of a real frustration we had as users.</p>
+      <p>We move fast, ship often, and listen closely to every message we receive — because our users are our best product managers.</p>
+      <a href="{{ url_for('support') }}" class="about-team-cta">
+        Chat with us →
+      </a>
+    </div>
+  </div>
 
-    <form id="contactForm">
+  <!-- ═══ CONTACT FORM ═══ -->
+  <div class="about-contact-section">
+    <div class="about-contact-left">
+      <div class="about-section-label">Get in touch</div>
+      <h2>We read every message.</h2>
+      <p>Whether it's a bug report, feature request, or just a question — send it our way. Average response time is under 2 hours.</p>
+      <div class="about-contact-links">
+        <a href="mailto:vaultcorewallet@gmail.com" class="about-contact-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="4" width="20" height="16" rx="2"/><polyline points="2,4 12,13 22,4"/></svg>
+          vaultcorewallet@gmail.com
+        </a>
+        <a href="https://x.com/Vaultcorewallet" target="_blank" rel="noopener" class="about-contact-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"/></svg>
+          @Vaultcorewallet
+        </a>
+        <span class="about-contact-link">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.4 2 2 0 0 1 3.6 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9.91a16 16 0 0 0 6 6l1.27-.95a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+          (+1) 802 885 3151
+        </span>
+      </div>
+    </div>
 
-      <div class="form-group">
+    <form id="contactForm" class="about-contact-form" onsubmit="submitContact(event)">
+      <div class="contact-form-group">
         <label>Your Email</label>
-        <input type="email" id="contactEmail"
-               name="email"
-               placeholder="Enter your email"
-               required>
+        <input type="email" id="contactEmail" name="email"
+               placeholder="you@example.com" required>
       </div>
-
-      <div class="form-group">
-        <label>Your Message</label>
-        <textarea id="contactMessage"
-                  name="message"
-                  placeholder="Enter your message"
-                  required></textarea>
+      <div class="contact-form-group">
+        <label>Subject</label>
+        <input type="text" id="contactSubject" name="subject"
+               placeholder="What's this about?">
       </div>
-
-      <button type="submit" class="btn-primary">
+      <div class="contact-form-group">
+        <label>Message</label>
+        <textarea id="contactMessage" name="message"
+                  placeholder="Tell us what's on your mind…" required></textarea>
+      </div>
+      <button type="submit" class="btn-send-msg" id="btnSendMsg">
         Send Message
       </button>
-
     </form>
   </div>
 
-</section>
+</div>
 
 <script>
 async function submitContact(event) {
-    event.preventDefault();
-
-    const email = document.getElementById("contactEmail").value;
-    const message = document.getElementById("contactMessage").value;
-
-    try {
-        const res = await fetch("/api/contact", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({ email, message })
-        });
-
-        const data = await res.json();
-
-        if (data.success) {
-            showToast("Message sent successfully ✅", "success");
-
-            document.getElementById("contactForm").reset();
-        } else {
-            showToast(data.error || "Something went wrong", "error");
-        }
-
-    } catch (err) {
-        showToast("Network error. Try again.", "error");
+  event.preventDefault();
+  const btn = document.getElementById('btnSendMsg');
+  const email   = document.getElementById('contactEmail').value;
+  const message = document.getElementById('contactMessage').value;
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  try {
+    const res  = await fetch('/api/contact', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email, message}),
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast('Message sent ✓');
+      document.getElementById('contactForm').reset();
+    } else {
+      showToast(data.error || 'Something went wrong');
     }
+  } catch(err) {
+    showToast('Network error. Please try again.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Send Message';
+  }
 }
 </script>
 
-<script>
-function showToast(message, type = "success") {
-    const toast = document.getElementById("toast");
-
-    toast.textContent = message;
-    toast.className = `toast show ${type}`;
-
-    setTimeout(() => {
-        toast.classList.remove("show");
-    }, 3000);
-}
-</script>
 {% endblock %}

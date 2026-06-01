@@ -8,8 +8,9 @@
     <button class="market-tab active" onclick="switchTab('all')" id="tabAll">
       All Markets
     </button>
-    <button class="market-tab" onclick="switchTab('watchlist')" id="tabWatchlist">
-      ⭐ Watchlist (<span id="watchlistCount">0</span>)
+    <button class="market-tab" onclick="switchTab('watchlist')" id="tabWatchlist" style="display:flex;align-items:center;gap:6px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      Watchlist (<span id="watchlistCount">0</span>)
     </button>
   </div>
 
@@ -22,7 +23,7 @@
     <table class="market-table" id="marketTable">
       <thead>
         <tr>
-          <th class="th-star">⭐</th>
+          <th class="th-star"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--gold)"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></th>
           <th data-col="rank"       class="sortable">#</th>
           <th data-col="pair"       class="sortable">Pair</th>
           <th data-col="name"       class="sortable">Name</th>
@@ -55,8 +56,8 @@
         <span class="modal-chg"       id="modalChg">—</span>
       </div>
       <div class="modal-header-right">
-        <button class="btn-trade-toggle" id="btnTradeToggle">⇄ Trade</button>
-        <button class="modal-close"      id="modalClose">✕</button>
+        <button class="btn-trade-toggle" id="btnTradeToggle" style="display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg> Trade</button>
+        <button class="modal-close" id="modalClose"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
     </div>
 
@@ -207,13 +208,16 @@ function renderTable(data) {
     const chg = (up?'+':'') + fmt(c.change_24h,2) + '%';
     const binSym = c.pair.replace('/','');
     const starred = watchlist.has(c.symbol);
+    const starSVG = starred
+      ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`
+      : `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`;
     return `
       <tr>
         <td class="td-star">
           <button class="btn-star ${starred?'starred':''}"
                   onclick="toggleWatchlist('${c.symbol}')"
                   title="${starred?'Remove from':'Add to'} watchlist">
-            ${starred?'⭐':'☆'}
+            ${starSVG}
           </button>
         </td>
         <td class="td-rank">#${c.rank}</td>
@@ -225,12 +229,14 @@ function renderTable(data) {
         <td class="td-mcap">${fmtLarge(c.market_cap)}</td>
         <td class="td-actions">
           <button class="btn-chart"
-                  onclick="openModal('${binSym}','${c.pair}',${c.price},${c.change_24h})">
-            📈 Chart
+                  onclick="openModal('${binSym}','${c.pair}',${c.price},${c.change_24h})"
+                  style="display:inline-flex;align-items:center;gap:4px">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg> Chart
           </button>
           <button class="btn-trade"
-                  onclick="openModal('${binSym}','${c.pair}',${c.price},${c.change_24h}, true)">
-            ⇄ Trade
+                  onclick="openModal('${binSym}','${c.pair}',${c.price},${c.change_24h}, true)"
+                  style="display:inline-flex;align-items:center;gap:4px">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg> Trade
           </button>
         </td>
       </tr>`;
@@ -289,7 +295,7 @@ function openModal(symbol, pair, price, chg, openTrade=false) {
   document.getElementById('tradeModeNote').innerHTML =
     `{{ 'true' if paper_trade else 'false' }}` === 'true'
       ? '<span class="paper-badge">PAPER TRADING — no real money</span>'
-      : '<span class="live-badge">⚠ LIVE TRADING</span>';
+      : '<span class="live-badge" style="display:inline-flex;align-items:center;gap:4px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> LIVE TRADING</span>';
 
   loadChart(symbol, currentTF);
 
@@ -488,7 +494,7 @@ async function confirmTrade() {
 
     result.innerHTML = `
       <div class="trade-success">
-        ✓ Order placed<br>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px"><polyline points="20 6 9 17 4 12"/></svg> Order placed<br>
         <small>ID: ${data.orderId}</small><br>
         <small>Status: ${data.status}</small>
         ${data.paper ? '<br><small class="paper-note">(Paper trade — simulated)</small>' : ''}
