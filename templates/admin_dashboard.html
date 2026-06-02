@@ -26,6 +26,41 @@
   </section>
 
   <section>
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h2>Manage Users</h2>
+        <p style="margin-bottom:16px; color:rgba(255,255,255,0.72);">
+          Click a user row to open the activity panel and perform account-specific actions.
+        </p>
+      </div>
+      <button type="button" onclick="loadUsers()" style="padding:10px 16px; border-radius:8px;">Refresh User List</button>
+    </div>
+    <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start;">
+      <div style="flex:1 1 540px; min-width:320px;">
+        <table id="adminUsersTable" class="table" style="width:100%;">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Active</th>
+              <th>Created</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div id="userActivitySection" class="admin-user-activity" style="flex:1 1 420px; min-width:320px; display:none; padding:16px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px;">
+        <h3>User Activity</h3>
+        <div id="userActivityInfo"></div>
+        <div id="userTransactions"></div>
+        <div id="userTrades"></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
     <h2>Support Tickets</h2>
     <div id="ticketList"></div>
   </section>

@@ -127,6 +127,8 @@ function toggleWatchlist(symbol) {
   }
   localStorage.setItem('watchlist', JSON.stringify([...watchlist]));
   updateWatchlistCount();
+}
+
 // ─────────────────────────────────────────────
 //  State
 // ─────────────────────────────────────────────
@@ -141,14 +143,7 @@ let chart          = null;
 let candleSeries   = null;
 let liveWS         = null;
 
-// refresh current view
-  if (currentTab === 'watchlist') {
-    const filtered = allData.filter(c => watchlist.has(c.symbol));
-    renderTable(filtered);
-  } else {
-    renderTable(allData);
-  }
-}
+const isPaperTrade = {{ 'true' if paper_trade else 'false' }};
 
 function switchTab(tab) {
   currentTab = tab;
@@ -296,11 +291,11 @@ function openModal(symbol, pair, price, chg, openTrade=false) {
 
   // paper trade note
   document.getElementById('tradeModeNote').innerHTML =
-    `{{ 'true' if paper_trade else 'false' }}` === 'true'
+    isPaperTrade === 'true'
       ? '<span class="paper-badge">PAPER TRADING — no real money</span>'
       : '<span class="live-badge" style="display:inline-flex;align-items:center;gap:4px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> LIVE TRADING</span>';
 
-  loadChart(symbol, currentTF);
+  setTimeout(() => loadChart(symbol, currentTF), 60);
 
   if (openTrade) {
     document.getElementById('tradePanel').classList.add('open');
@@ -338,6 +333,7 @@ async function loadChart(symbol, interval) {
   const container = document.getElementById('chartContainer');
   const errEl     = document.getElementById('chartError');
   errEl.style.display = 'none';
+  container.style.minHeight = '380px';
 
   // destroy previous chart
   if (chart) { chart.remove(); chart = null; candleSeries = null; }

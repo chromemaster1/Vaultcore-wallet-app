@@ -90,17 +90,146 @@ function reply(ticket_id) {
   });
 }
 
-// init
-document.addEventListener('DOMContentLoaded', ()=>{
+function formatDate(value) {
+  if (!value) return '-';
+  try {
+    return new Date(value).toLocaleString('en-US', { dateStyle:'medium', timeStyle:'short' });
+  } catch (e) {
+    return value;
+  }
+}
+
+async function loadUsers() {
+  const tbody = document.querySelector('#adminUsersTable tbody');
+  tbody.innerHTML = '<tr><td colspan="5" class="table-loading">Loading users…</td></tr>';
+
+  try {
+    const res = await fetch('/api/admin/users');
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(err || 'Failed to fetch user list.');
+    }
+    const users = await res.json();
+    tbody.innerHTML = '';
+
+    if (!users.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="table-loading">No users found.</td></tr>';
+      return;
+    }
+
+    users.forEach(u => {
+      const tr = document.createElement('tr');
+      const activeLabel = u.is_active ? 'Active' : 'Inactive';
+      const toggleLabel = u.is_active ? 'Deactivate' : 'Activate';
+      const disableActions = u.role === 'admin' ? 'disabled' : '';
+      tr.className = 'clickable-row';
+      tr.style.cursor = 'pointer';
+      tr.onclick = () => viewUserActivity(u.id);
+      tr.innerHTML = `
+        <td>${u.email}</td>
+        <td>${u.role}</td>
+        <td>${activeLabel}</td>
+        <td>${formatDate(u.created_at)}</td>
+        <td>
+          <button onclick="event.stopPropagation(); viewUserActivity(${u.id})">Activity</button>
+          <button onclick="event.stopPropagation(); toggleUserActive(${u.id})" ${disableActions}>${toggleLabel}</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="5" class="table-loading">Unable to load users: ${e.message}</td></tr>`;
+    console.error('Admin user list load failed:', e);
+  }
+}
+
+async function viewUserActivity(userId) {
+  try {
+    const res = await fetch(`/api/admin/user/${userId}/activity`);
+    const data = await res.json();
+    if (data.error) {
+      return alert('Unable to load activity: ' + data.error);
+    }
+
+    document.getElementById('userActivitySection').style.display = 'block';
+    document.getElementById('userActivityInfo').innerHTML = `
+      <p><strong>${data.user.full_name || data.user.email}</strong> &mdash; ${data.user.role.toUpperCase()}</p>
+      <p>Status: <strong>${data.user.is_active ? 'Active' : 'Inactive'}</strong></p>
+      <p>Joined: ${formatDate(data.user.created_at)}</p>
+    `;
+
+    document.getElementById('userTransactions').innerHTML = `
+      <h4>Transactions</h4>
+      <table class="table">
+        <thead><tr><th>Type</th><th>Symbol</th><th>Amount</th><th>Status</th><th>When</th></tr></thead>
+        <tbody>${data.transactions.map(tx => `
+          <tr>
+            <td>${tx.type}</td>
+            <td>${tx.symbol}</td>
+            <td>${tx.amount}</td>
+            <td>${tx.status}</td>
+            <td>${formatDate(tx.created_at)}</td>
+          </tr>
+        `).join('')}</tbody>
+      </table>
+    `;
+
+    document.getElementById('userTrades').innerHTML = `
+      <h4>Trades</h4>
+      <table class="table">
+        <thead><tr><th>Pair</th><th>Side</th><th>Amount</th><th>Price</th><th>Status</th><th>Opened</th></tr></thead>
+        <tbody>${data.trades.map(t => `
+          <tr>
+            <td>${t.pair}</td>
+            <td>${t.side}</td>
+            <td>${t.amount}</td>
+            <td>${t.entry_price || '-'}</td>
+            <td>${t.status}</td>
+            <td>${formatDate(t.opened_at)}</td>
+          </tr>
+        `).join('')}</tbody>
+      </table>
+    `;
+  } catch (e) {
+    alert('Unable to load user activity.');
+    console.error(e);
+  }
+}
+
+async function toggleUserActive(userId) {
+  try {
+    const res = await fetch(`/api/admin/user/${userId}/toggle-active`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+    });
+    const data = await res.json();
+    if (data.error) {
+      return alert('Error: ' + data.error);
+    }
+    await loadUsers();
+    alert('User status updated.');
+  } catch (e) {
+    alert('Failed to update user status.');
+    console.error(e);
+  }
+}
+
+function initAdminDashboard() {
   fetchPending();
   loadHashes();
+  loadUsers();
   loadTickets();
   loadComingSoonState();
   setInterval(fetchPending, 15000);
-  // wire toggle button if present
   const btn = document.getElementById('comingSoonBtn');
   if (btn) btn.addEventListener('click', toggleComingSoon);
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initAdminDashboard);
+} else {
+  initAdminDashboard();
+}
 
 async function loadComingSoonState(){
   try{

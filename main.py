@@ -557,7 +557,11 @@ def admin_required(f):
             return redirect(url_for('login'))
         user = User.query.filter_by(user_id=session['user_id']).first()
         if not user or user.role != 'admin':
-            return jsonify({"error": "Admin access required"}), 403
+            # For API calls, return JSON error; for browser requests, redirect with flash
+            if request.path.startswith('/api/') or 'application/json' in (request.headers.get('Accept') or ''):
+                return jsonify({"error": "Admin access required"}), 403
+            flash('Admin access required', 'warning')
+            return redirect(url_for('home'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -1174,8 +1178,12 @@ def api_trade():
     Places a market order. Requires keys saved via /api/keys.
     In PAPER_TRADE mode, simulates the order without hitting the exchange.
     """
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "Please login to place trades."}), 401
+
     data   = request.get_json(force=True)
-    symbol = (data.get("symbol") or "").strip().upper().replace("/","")
+    symbol = (data.get("symbol") or "").strip().upper().replace("/", "")
     side   = (data.get("side")   or "").strip().upper()
     try:
         amount = float(data.get("amount", 0))
@@ -1194,28 +1202,73 @@ def api_trade():
         order, err = place_market_order("", "", symbol, side, amount)
         if err:
             return jsonify({"error": err}), 503
-        return jsonify(order)
+    else:
+        # Real mode — retrieve and decrypt stored keys
+        enc_key    = session.get("enc_api_key")
+        enc_secret = session.get("enc_api_secret")
 
-    # Real mode — retrieve and decrypt stored keys
-    enc_key    = session.get("enc_api_key")
-    enc_secret = session.get("enc_api_secret")
+        if not enc_key or not enc_secret:
+            return jsonify({
+                "error": "No exchange keys found. Please add your Binance API keys in Settings."
+            }), 401
 
-    if not enc_key or not enc_secret:
-        return jsonify({
-            "error": "No exchange keys found. Please add your Binance API keys in Settings."
-        }), 401
+        try:
+            api_key    = decrypt_key(enc_key)
+            api_secret = decrypt_key(enc_secret)
+        except Exception as exc:
+            msg = f"Failed to decrypt stored keys: {exc}"
+            log.error("trade: %s", msg)
+            return jsonify({"error": msg}), 500
 
+        order, err = place_market_order(api_key, api_secret, symbol, side, amount)
+        if err:
+            return jsonify({"error": err}), 503
+
+    # Record trade activity for the current user
     try:
-        api_key    = decrypt_key(enc_key)
-        api_secret = decrypt_key(enc_secret)
-    except Exception as exc:
-        msg = f"Failed to decrypt stored keys: {exc}"
-        log.error("trade: %s", msg)
-        return jsonify({"error": msg}), 500
+        pair = symbol
+        if symbol.endswith('USDT'):
+            pair = f"{symbol[:-4]}/USDT"
+        else:
+            pair = symbol.replace('USDT', '/USDT')
 
-    order, err = place_market_order(api_key, api_secret, symbol, side, amount)
-    if err:
-        return jsonify({"error": err}), 503
+        entry_price = 0.0
+        if isinstance(order, dict):
+            entry_price = float(
+                order.get('avgPrice') or
+                (order.get('fills', [{}])[0].get('price') if order.get('fills') else None) or
+                order.get('price') or
+                0.0
+            )
+
+        trade = Trade(
+            user_id=user.id,
+            pair=pair,
+            side=side,
+            amount=amount,
+            entry_price=entry_price,
+            current_price=entry_price,
+            status='completed',
+        )
+        db.session.add(trade)
+
+        tx = Transaction(
+            tx_id=secrets.token_hex(32),
+            user_id=user.id,
+            type='trade',
+            symbol=symbol,
+            amount=amount,
+            status='completed',
+            notes=f"{side} {pair} market order",
+        )
+        db.session.add(tx)
+        db.session.commit()
+        log.info("trade: recorded trade activity for user %s, pair=%s, amount=%s", user.email, pair, amount)
+    except Exception as exc:
+        db.session.rollback()
+        log.error("trade: failed to save trade activity: %s", exc, exc_info=True)
+        return jsonify({"error": "Trade completed but failed to record activity."}), 500
+
     return jsonify(order)
 
 # ══════════════════════════════════════════════
@@ -1496,7 +1549,7 @@ def home():
 @login_required
 def market():
     """Market page."""
-    return render_template('market.html')
+    return render_template('market.html', paper_trade=PAPER_TRADE)
 
 
 @app.route('/send', methods=['GET'])
@@ -2512,6 +2565,71 @@ def api_admin_users():
         "is_active": u.is_active,
         "created_at": u.created_at.isoformat(),
     } for u in users])
+
+
+@app.route('/api/admin/user/<int:user_id>/activity')
+@admin_required
+def api_admin_user_activity(user_id):
+    """Return activity dashboard for a single user."""
+    user = User.query.get_or_404(user_id)
+
+    transactions = Transaction.query.filter_by(user_id=user.id).order_by(Transaction.created_at.desc()).limit(100).all()
+    trades = Trade.query.filter_by(user_id=user.id).order_by(Trade.opened_at.desc()).limit(100).all()
+
+    return jsonify({
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "full_name": user.full_name,
+            "role": user.role,
+            "is_active": user.is_active,
+            "created_at": user.created_at.isoformat(),
+        },
+        "transactions": [{
+            "tx_id": tx.tx_id,
+            "type": tx.type,
+            "symbol": tx.symbol,
+            "amount": tx.amount,
+            "status": tx.status,
+            "notes": tx.notes,
+            "created_at": tx.created_at.isoformat(),
+            "completed_at": tx.completed_at.isoformat() if tx.completed_at else None,
+        } for tx in transactions],
+        "trades": [{
+            "trade_id": t.trade_id,
+            "pair": t.pair,
+            "side": t.side,
+            "amount": t.amount,
+            "entry_price": t.entry_price,
+            "current_price": t.current_price,
+            "status": t.status,
+            "pnl": t.pnl,
+            "opened_at": t.opened_at.isoformat(),
+            "closed_at": t.closed_at.isoformat() if t.closed_at else None,
+        } for t in trades],
+    })
+
+
+@app.route('/api/admin/user/<int:user_id>/toggle-active', methods=['POST'])
+@admin_required
+def api_admin_toggle_user_active(user_id):
+    """Toggle a user's active state. Admin only."""
+    current = User.query.filter_by(user_id=session.get('user_id')).first()
+    user = User.query.get_or_404(user_id)
+
+    if current and current.id == user.id:
+        return jsonify({"error": "You cannot deactivate your own account here."}), 403
+    if user.role == 'admin':
+        return jsonify({"error": "This endpoint cannot modify another admin account."}), 403
+
+    user.is_active = not user.is_active
+    try:
+        db.session.commit()
+        return jsonify({"success": True, "is_active": user.is_active})
+    except Exception as exc:
+        db.session.rollback()
+        log.error("admin: toggle user active failed: %s", exc, exc_info=True)
+        return jsonify({"error": "Could not update user status."}), 500
 
 
 @app.route('/api/admin/manual-tx', methods=['POST'])
