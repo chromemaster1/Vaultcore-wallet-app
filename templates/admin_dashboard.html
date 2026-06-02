@@ -5,71 +5,86 @@
 <div class="admin-wrapper">
   <h1>Admin Dashboard</h1>
 
+  <!-- Pending Transactions Hero Cards -->
   <section>
-    <h2>Pending Transactions</h2>
-    <table id="pendingTxTable" class="table">
-      <thead><tr><th>TX ID</th><th>User</th><th>Type</th><th>Symbol</th><th>Amount</th><th>To</th><th>Action</th></tr></thead>
-      <tbody></tbody>
-    </table>
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:24px;">
+      <div>
+        <h2>Pending Transactions</h2>
+        <p style="margin-bottom:0; color:rgba(255,255,255,0.72); font-size:14px;">Review and manage pending transactions</p>
+      </div>
+      <button type="button" onclick="fetchPending()" style="padding:10px 16px; border-radius:8px; background:rgba(34,197,94,0.2); border:1px solid rgba(34,197,94,0.5);">↻ Refresh</button>
+    </div>
+    <div id="pendingTxGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:16px; margin-bottom:24px;"></div>
+  </section>
+
+  <!-- Wallet Hashes Hero Cards -->
+  <section>
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:24px;">
+      <div>
+        <h2>Wallet Hashes</h2>
+        <p style="margin-bottom:0; color:rgba(255,255,255,0.72); font-size:14px;">Manage deposit wallet addresses</p>
+      </div>
+      <button type="button" onclick="loadHashes()" style="padding:10px 16px; border-radius:8px; background:rgba(34,197,94,0.2); border:1px solid rgba(34,197,94,0.5);">↻ Refresh</button>
+    </div>
+    <div id="hashGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:16px; margin-bottom:24px;"></div>
+
+    <!-- Add/Update Hash Card -->
+    <div style="padding:20px; background:linear-gradient(135deg, rgba(34,197,94,0.1), rgba(59,130,246,0.1)); border:1px solid rgba(255,255,255,.08); border-radius:12px;">
+      <h3 style="margin-top:0; color:rgba(255,255,255,0.95);">Add / Update Hash</h3>
+      <form id="hashForm" onsubmit="saveHash(event)" style="display:grid; gap:12px;">
+        <input id="symbol" placeholder="Symbol (e.g. BTC)" style="padding:10px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); border-radius:6px; color:rgba(255,255,255,0.95);" required />
+        <input id="address" placeholder="Address / Hash" style="padding:10px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); border-radius:6px; color:rgba(255,255,255,0.95);" required />
+        <input id="note" placeholder="Note (optional)" style="padding:10px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); border-radius:6px; color:rgba(255,255,255,0.95);" />
+        <button type="submit" style="padding:10px; background:rgba(34,197,94,0.3); border:1px solid rgba(34,197,94,0.5); color:#86efac; border-radius:6px; cursor:pointer; font-weight:500;">Save Hash</button>
+      </form>
+    </div>
   </section>
 
   <section>
-    <h2>Wallet Hashes</h2>
-    <div id="hashList"></div>
-    <h3>Set / Update Hash</h3>
-    <form id="hashForm" onsubmit="saveHash(event)">
-      <input id="symbol" placeholder="Symbol (e.g. BTC)" required />
-      <input id="address" placeholder="Address / Hash" required />
-      <input id="note" placeholder="Note (optional)" />
-      <button type="submit">Save</button>
-    </form>
-  </section>
-
-  <section>
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:24px;">
       <div>
         <h2>Manage Users</h2>
-        <p style="margin-bottom:16px; color:rgba(255,255,255,0.72);">
-          Click a user row to open the activity panel and perform account-specific actions.
+        <p style="margin-bottom:0; color:rgba(255,255,255,0.72); font-size:14px;">
+          Click on any user card to view and manage their account details.
         </p>
       </div>
-      <button type="button" onclick="loadUsers()" style="padding:10px 16px; border-radius:8px;">Refresh User List</button>
+      <button type="button" onclick="loadUsers()" style="padding:10px 16px; border-radius:8px; background:rgba(34,197,94,0.2); border:1px solid rgba(34,197,94,0.5);">↻ Refresh</button>
     </div>
-    <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start;">
-      <div style="flex:1 1 540px; min-width:320px;">
-        <table id="adminUsersTable" class="table" style="width:100%;">
-          <thead>
-            <tr>
-              <th>Email</th>
-              <th>Role</th>
-              <th>Active</th>
-              <th>Created</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
 
-      <div id="userActivitySection" class="admin-user-activity" style="flex:1 1 420px; min-width:320px; display:none; padding:16px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px;">
-        <h3>User Activity</h3>
-        <div id="userActivityInfo"></div>
-        <div id="userTransactions"></div>
-        <div id="userTrades"></div>
-      </div>
+    <!-- User Cards Grid -->
+    <div id="userCardsGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:16px; margin-bottom:24px;"></div>
+
+    <!-- User Detail Panel -->
+    <div id="userDetailPanel" style="display:none; padding:24px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; margin-top:24px;">
+      <button type="button" onclick="closeUserDetail()" style="float:right; padding:4px 8px; background:transparent; border:none; color:rgba(255,255,255,0.6); cursor:pointer; font-size:18px;">✕</button>
+      <div id="userDetailContent"></div>
     </div>
   </section>
 
+  <!-- Support Tickets Hero Cards -->
   <section>
-    <h2>Support Tickets</h2>
-    <div id="ticketList"></div>
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:24px;">
+      <div>
+        <h2>Support Tickets</h2>
+        <p style="margin-bottom:0; color:rgba(255,255,255,0.72); font-size:14px;">Respond to user support requests</p>
+      </div>
+      <button type="button" onclick="loadTickets()" style="padding:10px 16px; border-radius:8px; background:rgba(34,197,94,0.2); border:1px solid rgba(34,197,94,0.5);">↻ Refresh</button>
+    </div>
+    <div id="ticketGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:16px; margin-bottom:24px;"></div>
   </section>
 
+  <!-- Site Mode Hero Card -->
   <section>
-    <h2>Site Mode</h2>
-    <p>Toggle the "Coming Soon" page for public visitors.</p>
-    <button id="comingSoonBtn">Toggle Coming Soon</button>
-    <span id="comingSoonStatus" style="margin-left:12px;font-weight:bold"></span>
+    <div style="padding:24px; background:linear-gradient(135deg, rgba(59,130,246,0.1), rgba(139,92,246,0.1)); border:1px solid rgba(255,255,255,.08); border-radius:12px; display:flex; justify-content:space-between; align-items:center; gap:20px;">
+      <div>
+        <h2 style="margin:0 0 8px 0;">Site Mode</h2>
+        <p style="margin:0; color:rgba(255,255,255,0.72); font-size:14px;">Toggle the "Coming Soon" page for public visitors</p>
+      </div>
+      <div style="text-align:right;">
+        <button id="comingSoonBtn" style="padding:10px 20px; background:rgba(59,130,246,0.3); border:1px solid rgba(59,130,246,0.5); color:#93c5fd; border-radius:6px; cursor:pointer; font-weight:500;">Toggle</button>
+        <div id="comingSoonStatus" style="margin-top:12px; font-weight:bold; font-size:14px;"></div>
+      </div>
+    </div>
   </section>
 
 </div>

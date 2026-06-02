@@ -1535,10 +1535,16 @@ def home():
     log.info("Home - user %s authenticated", user.email)
     total_balance = sum((w.balance or 0.0) for w in user.wallets) if user.wallets else 0.0
 
+    # Ensure news is a list (sometimes can be None or malformed)
+    if not news or not isinstance(news, list):
+        news = []
+        if not news_err:
+            news_err = "Unable to load news at this time."
+
     return render_template(
         'index.html',
         pages=pages,
-        news=news,
+        news=news if news else [],
         market_error=market_err,
         news_error=news_err,
         total_balance=total_balance,
