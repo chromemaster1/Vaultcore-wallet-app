@@ -10,3 +10,17 @@ __pycache__/
 .idea/
 .git_backup_*
 /*.html
+
+
+    {
+        "email":     "admin@vaultcore.com",
+        "password":  "Admin@123456",
+        "full_name": "VaultCore Admin",
+        "role":      "admin",
+    },
+    {
+        "email":     "user@vaultcore.com",
+        "password":  "User@123456",
+        "full_name": "Demo User",
+        "role":      "user",
+    },

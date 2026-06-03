@@ -1,410 +1,531 @@
+// ─── Section nav ─────────────────────────────────────────────────────────────
+function showSection(name) {
+  document.querySelectorAll('.adm-section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.adm-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('section' + name.charAt(0).toUpperCase() + name.slice(1)).classList.add('active');
+  document.getElementById('btn'    + name.charAt(0).toUpperCase() + name.slice(1)).classList.add('active');
+}
+
+function refreshAll() {
+  fetchPending();
+  loadUsers();
+  loadHashes();
+  loadTickets();
+  loadTrades();
+  loadComingSoonState();
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function formatDate(value) {
+  if (!value) return '—';
+  try { return new Date(value).toLocaleString('en-US', {dateStyle:'medium', timeStyle:'short'}); }
+  catch(e) { return value; }
+}
+
+function showToast(msg, type = 'success') {
+  const t = document.getElementById('toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.style.borderColor = type === 'error' ? 'rgba(246,70,93,.3)' : '';
+  t.style.color = type === 'error' ? 'var(--danger)' : '';
+  t.classList.add('visible');
+  setTimeout(() => { t.classList.remove('visible'); t.style.borderColor = ''; t.style.color = ''; }, 4000);
+}
+
+// ─── Pending Transactions ─────────────────────────────────────────────────────
 async function fetchPending() {
-  const grid = document.getElementById('pendingTxGrid');
-  grid.innerHTML = '<div style="grid-column:1/-1; padding:20px; text-align:center; color:rgba(255,255,255,0.6);">Loading transactions…</div>';
+  const tbody = document.getElementById('pendingTxGrid');
+  tbody.innerHTML = '<tr><td colspan="7" class="adm-table-loading">Loading…</td></tr>';
 
   try {
-    const res = await fetch('/api/admin/pending-transactions');
-    if (!res.ok) throw new Error('Failed to fetch transactions');
+    const res  = await fetch('/api/admin/pending-transactions');
+    if (!res.ok) throw new Error('Failed to fetch');
     const data = await res.json();
-    grid.innerHTML = '';
+
+    const badge = document.getElementById('badgePending');
+    if (badge) badge.textContent = data.length || '';
+
+    const statEl = document.getElementById('statPending');
+    if (statEl) statEl.textContent = data.length;
 
     if (!data.length) {
-      grid.innerHTML = '<div style="grid-column:1/-1; padding:20px; text-align:center; color:rgba(255,255,255,0.6);">No pending transactions</div>';
+      tbody.innerHTML = '<tr><td colspan="7" class="adm-table-empty">No pending transactions</td></tr>';
       return;
     }
 
-    data.forEach(tx => {
-      const card = document.createElement('div');
-      const typeColor = tx.type === 'deposit' ? '#86efac' : '#fca5a5';
-      const typeBg = tx.type === 'deposit' ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)';
-
-      card.style.cssText = `
-        padding:16px; background:linear-gradient(135deg, rgba(59,130,246,0.1), rgba(139,92,246,0.1));
-        border:1px solid rgba(255,255,255,.08); border-radius:12px; transition:all 0.2s;
-        display:flex; flex-direction:column; gap:12px;
-      `;
-      card.onmouseover = () => card.style.background = 'linear-gradient(135deg, rgba(59,130,246,0.15), rgba(139,92,246,0.15))';
-      card.onmouseout = () => card.style.background = 'linear-gradient(135deg, rgba(59,130,246,0.1), rgba(139,92,246,0.1))';
-
-      card.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:start; gap:8px;">
-          <div style="flex:1;">
-            <div style="font-weight:600; color:rgba(255,255,255,0.95); font-size:14px;">TX: ${tx.tx_id}</div>
-            <div style="font-size:12px; color:rgba(255,255,255,0.6); margin-top:4px;">${tx.user_email}</div>
+    tbody.innerHTML = data.map(tx => `
+      <tr>
+        <td><span class="adm-mono">${tx.tx_id}</span></td>
+        <td>${tx.user_email}</td>
+        <td><span class="adm-badge ${tx.type === 'deposit' ? 'badge-success' : 'badge-danger'}">${tx.type.toUpperCase()}</span></td>
+        <td><span class="adm-mono">${tx.symbol}</span></td>
+        <td><span class="adm-mono">${tx.amount}</span></td>
+        <td class="adm-address">${tx.to_address ? tx.to_address.slice(0,14)+'…' : '—'}</td>
+        <td>
+          <div style="display:flex;gap:6px">
+            <button class="adm-btn-approve" onclick="openTxModal(${tx.id},'approve','${tx.tx_id}')">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              Approve
+            </button>
+            <button class="adm-btn-reject" onclick="openTxModal(${tx.id},'reject','${tx.tx_id}')">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              Reject
+            </button>
           </div>
-          <span style="display:inline-block; background:${typeBg}; color:${typeColor}; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:500;">${tx.type.toUpperCase()}</span>
-        </div>
-        <div style="background:rgba(255,255,255,.02); padding:12px; border-radius:8px; font-size:12px;">
-          <div><strong>${tx.symbol}:</strong> ${tx.amount} <span style="color:rgba(255,255,255,0.5);">units</span></div>
-          ${tx.to_address ? `<div style="margin-top:6px; word-break:break-all;"><strong>To:</strong> <span style="color:rgba(255,255,255,0.6); font-size:11px;">${tx.to_address}</span></div>` : ''}
-        </div>
-        <div style="display:flex; gap:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,.08);">
-          <button onclick="adminAction(${tx.id}, 'approve')" style="flex:1; padding:6px 12px; background:rgba(34,197,94,0.3); border:1px solid rgba(34,197,94,0.5); color:#86efac; border-radius:6px; cursor:pointer; font-size:12px; font-weight:500;">✓ Approve</button>
-          <button onclick="adminAction(${tx.id}, 'reject')" style="flex:1; padding:6px 12px; background:rgba(239,68,68,0.3); border:1px solid rgba(239,68,68,0.5); color:#fca5a5; border-radius:6px; cursor:pointer; font-size:12px; font-weight:500;">✕ Reject</button>
-        </div>
-      `;
-      grid.appendChild(card);
-    });
-  } catch (e) {
-    grid.innerHTML = `<div style="grid-column:1/-1; padding:20px; text-align:center; color:#fca5a5;">Error: ${e.message}</div>`;
-    console.error('Failed to load pending transactions:', e);
+        </td>
+      </tr>`).join('');
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="7" class="adm-table-error">Error: ${e.message}</td></tr>`;
   }
 }
+
+// TX action modal
+let _txActionId = null, _txActionType = null;
+function openTxModal(id, action, txId) {
+  _txActionId   = id;
+  _txActionType = action;
+  const isApprove = action === 'approve';
+  document.getElementById('txActionTitle').textContent = isApprove ? 'Approve Transaction' : 'Reject Transaction';
+  document.getElementById('txActionDesc').textContent  = `${isApprove ? 'Approve' : 'Reject'} transaction ${txId}?`;
+  document.getElementById('txActionNote').value = '';
+  const btn = document.getElementById('txActionConfirm');
+  btn.className  = isApprove ? 'adm-btn-primary' : 'adm-btn-danger';
+  btn.textContent = isApprove ? 'Approve' : 'Reject';
+  document.getElementById('txActionModal').classList.add('open');
+}
+function closeTxModal() { document.getElementById('txActionModal').classList.remove('open'); }
+document.getElementById('txActionModal').addEventListener('click', e => { if (e.target.id === 'txActionModal') closeTxModal(); });
 
 async function adminAction(id, action) {
-  const note = prompt('Optional note for this action:') || '';
-  const res = await fetch(`/api/admin/tx/${id}/action`, {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({action, note}),
-  });
-  const data = await res.json();
-  if (data.success) {
-    alert('Action completed');
-    fetchPending();
-  } else {
-    alert('Error: ' + (data.error || JSON.stringify(data)));
-  }
-}
-
-async function loadHashes() {
-  const grid = document.getElementById('hashGrid');
-  grid.innerHTML = '<div style="grid-column:1/-1; padding:20px; text-align:center; color:rgba(255,255,255,0.6);">Loading hashes…</div>';
-
+  const note = document.getElementById('txActionNote').value.trim();
+  closeTxModal();
   try {
-    const res = await fetch('/api/admin/get-hashes');
-    if (!res.ok) throw new Error('Failed to fetch hashes');
-    const data = await res.json();
-    grid.innerHTML = '';
-
-    if (!data.length) {
-      grid.innerHTML = '<div style="grid-column:1/-1; padding:20px; text-align:center; color:rgba(255,255,255,0.6);">No wallet hashes configured</div>';
-      return;
-    }
-
-    data.forEach(h => {
-      const card = document.createElement('div');
-      card.style.cssText = `
-        padding:16px; background:linear-gradient(135deg, rgba(34,197,94,0.1), rgba(59,130,246,0.1));
-        border:1px solid rgba(255,255,255,.08); border-radius:12px; transition:all 0.2s;
-        display:flex; flex-direction:column; gap:12px;
-      `;
-      card.onmouseover = () => card.style.background = 'linear-gradient(135deg, rgba(34,197,94,0.15), rgba(59,130,246,0.15))';
-      card.onmouseout = () => card.style.background = 'linear-gradient(135deg, rgba(34,197,94,0.1), rgba(59,130,246,0.1))';
-
-      card.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-          <div>
-            <div style="font-weight:600; color:rgba(255,255,255,0.95); font-size:16px;">${h.symbol}</div>
-            ${h.note ? `<div style="font-size:12px; color:rgba(255,255,255,0.6); margin-top:4px;">${h.note}</div>` : ''}
-          </div>
-          <span style="display:inline-block; background:rgba(34,197,94,0.2); color:#86efac; padding:4px 8px; border-radius:4px; font-size:10px; font-weight:500;">ACTIVE</span>
-        </div>
-        <div style="background:rgba(255,255,255,.02); padding:12px; border-radius:8px; font-size:11px; word-break:break-all; color:rgba(255,255,255,0.7);">
-          ${h.address}
-        </div>
-      `;
-      grid.appendChild(card);
+    const res  = await fetch(`/api/admin/tx/${id}/action`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({action, note}),
     });
-  } catch (e) {
-    grid.innerHTML = `<div style="grid-column:1/-1; padding:20px; text-align:center; color:#fca5a5;">Error: ${e.message}</div>`;
-    console.error('Failed to load hashes:', e);
-  }
-}
-
-async function saveHash(e) {
-  e.preventDefault();
-  const symbol = document.getElementById('symbol').value.trim();
-  const address = document.getElementById('address').value.trim();
-  const note = document.getElementById('note').value.trim();
-  const res = await fetch('/api/admin/set-hash', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({symbol, address, note}),
-  });
-  const data = await res.json();
-  if (data.success) {
-    alert('Saved');
-    loadHashes();
-  } else {
-    alert('Error: ' + (data.error || JSON.stringify(data)));
-  }
-}
-
-async function loadTickets() {
-  const grid = document.getElementById('ticketGrid');
-  grid.innerHTML = '<div style="grid-column:1/-1; padding:20px; text-align:center; color:rgba(255,255,255,0.6);">Loading tickets…</div>';
-
-  try {
-    const res = await fetch('/api/admin/support/tickets');
-    if (!res.ok) throw new Error('Failed to fetch tickets');
     const data = await res.json();
-    grid.innerHTML = '';
-
-    if (!data.length) {
-      grid.innerHTML = '<div style="grid-column:1/-1; padding:20px; text-align:center; color:rgba(255,255,255,0.6);">No support tickets</div>';
-      return;
-    }
-
-    data.forEach(t => {
-      const card = document.createElement('div');
-      card.style.cssText = `
-        padding:16px; background:linear-gradient(135deg, rgba(139,92,246,0.1), rgba(59,130,246,0.1));
-        border:1px solid rgba(255,255,255,.08); border-radius:12px; transition:all 0.2s;
-        display:flex; flex-direction:column; gap:12px;
-      `;
-      card.onmouseover = () => card.style.background = 'linear-gradient(135deg, rgba(139,92,246,0.15), rgba(59,130,246,0.15))';
-      card.onmouseout = () => card.style.background = 'linear-gradient(135deg, rgba(139,92,246,0.1), rgba(59,130,246,0.1))';
-
-      card.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:start; gap:8px;">
-          <div style="flex:1;">
-            <div style="font-weight:600; color:rgba(255,255,255,0.95); font-size:14px;">${t.subject}</div>
-            <div style="font-size:12px; color:rgba(255,255,255,0.6); margin-top:4px;">${t.user_email}</div>
-          </div>
-          <span style="display:inline-block; background:rgba(139,92,246,0.2); color:#d8b4fe; padding:2px 8px; border-radius:4px; font-size:10px;">#${t.ticket_id}</span>
-        </div>
-        <div style="background:rgba(255,255,255,.02); padding:12px; border-radius:8px; font-size:12px; color:rgba(255,255,255,0.7);">
-          ${t.subject}
-        </div>
-        <button onclick="reply('${t.ticket_id}')" style="padding:8px 12px; background:rgba(59,130,246,0.3); border:1px solid rgba(59,130,246,0.5); color:#93c5fd; border-radius:6px; cursor:pointer; font-size:12px; font-weight:500;">↪ Reply</button>
-      `;
-      grid.appendChild(card);
-    });
-  } catch (e) {
-    grid.innerHTML = `<div style="grid-column:1/-1; padding:20px; text-align:center; color:#fca5a5;">Error: ${e.message}</div>`;
-    console.error('Failed to load tickets:', e);
-  }
+    if (data.success) { showToast(`Transaction ${action}d`); fetchPending(); }
+    else showToast('Error: ' + (data.error || 'Unknown'), 'error');
+  } catch(e) { showToast('Request failed', 'error'); }
 }
 
-function reply(ticket_id) {
-  const msg = prompt('Reply message:');
-  if (!msg) return;
-  fetch(`/api/admin/support/ticket/${ticket_id}/reply`, {
-    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({message: msg})
-  }).then(r=>r.json()).then(d=>{
-    if (d.success) alert('Replied'); else alert('Error');
-  });
-}
+document.getElementById('txActionConfirm').addEventListener('click', () => {
+  if (_txActionId) adminAction(_txActionId, _txActionType);
+});
 
-function formatDate(value) {
-  if (!value) return '-';
-  try {
-    return new Date(value).toLocaleString('en-US', { dateStyle:'medium', timeStyle:'short' });
-  } catch (e) {
-    return value;
-  }
-}
-
+// ─── Users ────────────────────────────────────────────────────────────────────
+let _allUsers = [];
 async function loadUsers() {
-  const grid = document.getElementById('userCardsGrid');
-  grid.innerHTML = '<div style="grid-column:1/-1; padding:20px; text-align:center; color:rgba(255,255,255,0.6);">Loading users…</div>';
-
+  const tbody = document.getElementById('userCardsGrid');
+  tbody.innerHTML = '<tr><td colspan="5" class="adm-table-loading">Loading users…</td></tr>';
   try {
-    const res = await fetch('/api/admin/users');
-    if (!res.ok) {
-      const err = await res.text();
-      throw new Error(err || 'Failed to fetch user list.');
-    }
-    const users = await res.json();
-    grid.innerHTML = '';
+    const res   = await fetch('/api/admin/users');
+    if (!res.ok) throw new Error(await res.text() || 'Failed');
+    _allUsers   = await res.json();
+    const statEl = document.getElementById('statUsers');
+    if (statEl) statEl.textContent = _allUsers.length;
+    renderUsers(_allUsers);
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="5" class="adm-table-error">Error: ${e.message}</td></tr>`;
+  }
+}
 
-    if (!users.length) {
-      grid.innerHTML = '<div style="grid-column:1/-1; padding:20px; text-align:center; color:rgba(255,255,255,0.6);">No users found.</div>';
-      return;
-    }
+function filterUsers() {
+  const q = (document.getElementById('userSearch').value || '').toLowerCase();
+  renderUsers(q ? _allUsers.filter(u => u.email.toLowerCase().includes(q) || (u.full_name||'').toLowerCase().includes(q)) : _allUsers);
+}
 
-    users.forEach(u => {
-      const activeLabel = u.is_active ? 'Active' : 'Inactive';
-      const roleBadge = u.role === 'admin' ? '<span style="display:inline-block; background:rgba(250,204,21,0.2); color:#facccc; padding:2px 8px; border-radius:4px; font-size:12px; margin-left:8px;">ADMIN</span>' : '';
-      const card = document.createElement('div');
-      card.style.cssText = `
-        padding:16px; background:linear-gradient(135deg, rgba(59,130,246,0.1), rgba(139,92,246,0.1));
-        border:1px solid rgba(255,255,255,.08); border-radius:12px; cursor:pointer; transition:all 0.2s;
-        display:flex; flex-direction:column; gap:12px;
-      `;
-      card.onmouseover = () => card.style.background = 'linear-gradient(135deg, rgba(59,130,246,0.15), rgba(139,92,246,0.15))';
-      card.onmouseout = () => card.style.background = 'linear-gradient(135deg, rgba(59,130,246,0.1), rgba(139,92,246,0.1))';
-      card.onclick = () => viewUserDetail(u.id);
-
-      card.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:start; gap:8px;">
+function renderUsers(users) {
+  const tbody = document.getElementById('userCardsGrid');
+  if (!users.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="adm-table-empty">No users found</td></tr>';
+    return;
+  }
+  tbody.innerHTML = users.map(u => `
+    <tr class="adm-row-clickable" onclick="viewUserDetail(${u.id})">
+      <td>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="adm-user-avatar">${(u.full_name || u.email)[0].toUpperCase()}</div>
           <div>
-            <div style="font-weight:600; color:rgba(255,255,255,0.95);">${u.email}</div>
-            <div style="font-size:12px; color:rgba(255,255,255,0.6); margin-top:4px;">${u.full_name || 'N/A'}${roleBadge}</div>
-          </div>
-          <div style="text-align:right;">
-            <span style="display:inline-block; background:${u.is_active ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)'}; color:${u.is_active ? '#86efac' : '#fca5a5'}; padding:2px 6px; border-radius:3px; font-size:11px;">${activeLabel}</span>
+            <div style="font-weight:600;color:var(--text-1)">${u.email}</div>
+            <div style="font-size:11px;color:var(--text-3)">${u.full_name || '—'}</div>
           </div>
         </div>
-        <div style="font-size:12px; color:rgba(255,255,255,0.5);">Joined: ${formatDate(u.created_at)}</div>
-      `;
-      grid.appendChild(card);
-    });
-  } catch (e) {
-    grid.innerHTML = `<div style="grid-column:1/-1; padding:20px; text-align:center; color:#fca5a5;">Error: ${e.message}</div>`;
-    console.error('Admin user list load failed:', e);
-  }
+      </td>
+      <td>${u.role === 'admin' ? '<span class="adm-badge badge-warning">ADMIN</span>' : '<span class="adm-badge badge-default">USER</span>'}</td>
+      <td>${u.is_active ? '<span class="adm-badge badge-success">Active</span>' : '<span class="adm-badge badge-danger">Inactive</span>'}</td>
+      <td><span class="adm-date">${formatDate(u.created_at)}</span></td>
+      <td>
+        <button class="adm-btn-ghost adm-btn-sm" onclick="event.stopPropagation();toggleUserActive(${u.id},'${u.email}',${u.is_active})">
+          ${u.is_active ? 'Deactivate' : 'Activate'}
+        </button>
+      </td>
+    </tr>`).join('');
 }
 
 async function viewUserDetail(userId) {
+  const panel   = document.getElementById('userDetailPanel');
+  const content = document.getElementById('userDetailContent');
+  panel.style.display = 'block';
+  content.innerHTML   = '<div class="adm-table-loading">Loading…</div>';
+  panel.scrollIntoView({behavior:'smooth', block:'nearest'});
+
   try {
-    const res = await fetch(`/api/admin/user/${userId}/activity`);
+    const res  = await fetch(`/api/admin/user/${userId}/activity`);
     const data = await res.json();
-    if (data.error) {
-      return alert('Unable to load user details: ' + data.error);
-    }
+    if (data.error) throw new Error(data.error);
 
-    const panel = document.getElementById('userDetailPanel');
-    const content = document.getElementById('userDetailContent');
+    document.getElementById('detailTitle').textContent = data.user.full_name || data.user.email;
 
-    const transactionsHTML = data.transactions && data.transactions.length > 0
-      ? data.transactions.map(tx => `<tr><td>${tx.type}</td><td>${tx.symbol}</td><td>${tx.amount}</td><td>${tx.status}</td><td>${formatDate(tx.created_at)}</td></tr>`).join('')
-      : '<tr><td colspan="5" style="text-align:center; color:rgba(255,255,255,0.5);">No transactions</td></tr>';
+    const txRows = (data.transactions || []).map(tx => `
+      <tr>
+        <td><span class="adm-badge ${tx.type==='deposit'?'badge-success':'badge-danger'}">${tx.type}</span></td>
+        <td><span class="adm-mono">${tx.symbol}</span></td>
+        <td><span class="adm-mono">${tx.amount}</span></td>
+        <td><span class="adm-badge ${tx.status==='approved'?'badge-success':tx.status==='pending'?'badge-warning':'badge-danger'}">${tx.status}</span></td>
+        <td class="adm-date">${formatDate(tx.created_at)}</td>
+      </tr>`).join('') || '<tr><td colspan="5" class="adm-table-empty">No transactions</td></tr>';
 
-    const tradesHTML = data.trades && data.trades.length > 0
-      ? data.trades.map(t => `<tr><td>${t.pair}</td><td>${t.side}</td><td>${t.amount}</td><td>${t.entry_price || '-'}</td><td>${t.status}</td><td>${formatDate(t.opened_at)}</td></tr>`).join('')
-      : '<tr><td colspan="6" style="text-align:center; color:rgba(255,255,255,0.5);">No trades</td></tr>';
+    const tradeRows = (data.trades || []).map(t => `
+      <tr>
+        <td><span class="adm-mono">${t.pair}</span></td>
+        <td><span class="adm-badge ${t.side==='BUY'?'badge-success':'badge-danger'}">${t.side}</span></td>
+        <td><span class="adm-mono">${t.amount}</span></td>
+        <td><span class="adm-mono">${t.entry_price||'—'}</span></td>
+        <td><span class="adm-badge badge-default">${t.status}</span></td>
+        <td class="adm-date">${formatDate(t.opened_at)}</td>
+      </tr>`).join('') || '<tr><td colspan="6" class="adm-table-empty">No trades</td></tr>';
 
     content.innerHTML = `
-      <h3 style="margin-top:0; display:flex; justify-content:space-between; align-items:center;">
-        <span>${data.user.full_name || data.user.email}</span>
-        <span style="font-size:12px; font-weight:400; color:rgba(255,255,255,0.5);">ID: ${data.user.id}</span>
-      </h3>
+      <!-- User info row -->
+      <div class="adm-user-info-grid">
+        <div class="adm-info-item"><div class="adm-info-label">Email</div><div class="adm-info-value">${data.user.email}</div></div>
+        <div class="adm-info-item"><div class="adm-info-label">Role</div><div class="adm-info-value">${data.user.role.toUpperCase()}</div></div>
+        <div class="adm-info-item"><div class="adm-info-label">Status</div><div class="adm-info-value"><span class="adm-badge ${data.user.is_active?'badge-success':'badge-danger'}">${data.user.is_active?'Active':'Inactive'}</span></div></div>
+        <div class="adm-info-item"><div class="adm-info-label">Joined</div><div class="adm-info-value adm-date">${formatDate(data.user.created_at)}</div></div>
+      </div>
 
-      <!-- User Info Card -->
-      <div style="background:rgba(255,255,255,.02); padding:12px; border-radius:8px; margin-bottom:16px;">
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:13px;">
-          <div><strong>Email:</strong> ${data.user.email}</div>
-          <div><strong>Role:</strong> ${data.user.role.toUpperCase()}</div>
-          <div><strong>Status:</strong> <span style="color:${data.user.is_active ? '#86efac' : '#fca5a5'};">${data.user.is_active ? '● Active' : '● Inactive'}</span></div>
-          <div><strong>Joined:</strong> ${formatDate(data.user.created_at)}</div>
+      <!-- Detail tabs -->
+      <div class="adm-detail-tabs" id="detailTabs">
+        <button class="adm-detail-tab active" onclick="switchDetailTab('transactions')">Transactions</button>
+        <button class="adm-detail-tab" onclick="switchDetailTab('trades')">Trades</button>
+        <button class="adm-detail-tab" onclick="switchDetailTab('security')">Security</button>
+      </div>
+
+      <div id="detailTabTransactions" class="adm-detail-content active">
+        <div class="adm-table-wrap">
+          <table class="adm-table">
+            <thead><tr><th>Type</th><th>Symbol</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+            <tbody>${txRows}</tbody>
+          </table>
         </div>
-        <div style="margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,.08);">
-          <button onclick="toggleUserActive(${data.user.id})" style="padding:6px 12px; margin-right:8px; background:rgba(${data.user.is_active ? '239,68,68' : '34,197,94'},0.2); border:1px solid rgba(${data.user.is_active ? '239,68,68' : '34,197,94'},0.5); color:${data.user.is_active ? '#fca5a5' : '#86efac'}; border-radius:6px; cursor:pointer; font-size:12px;">
-            ${data.user.is_active ? 'Deactivate' : 'Activate'}
+      </div>
+      <div id="detailTabTrades" class="adm-detail-content">
+        <div class="adm-table-wrap">
+          <table class="adm-table">
+            <thead><tr><th>Pair</th><th>Side</th><th>Amount</th><th>Price</th><th>Status</th><th>Opened</th></tr></thead>
+            <tbody>${tradeRows}</tbody>
+          </table>
+        </div>
+      </div>
+      <div id="detailTabSecurity" class="adm-detail-content">
+        <div class="adm-user-info-grid">
+          <div class="adm-info-item"><div class="adm-info-label">2FA</div><div class="adm-info-value" style="color:var(--text-3)">Not enabled</div></div>
+          <div class="adm-info-item"><div class="adm-info-label">Last Login</div><div class="adm-info-value" style="color:var(--text-3)">Unknown</div></div>
+        </div>
+        <div style="margin-top:14px;display:flex;gap:8px">
+          <button class="adm-btn-ghost adm-btn-sm" onclick="toggleUserActive(${data.user.id},'${data.user.email}',${data.user.is_active})">
+            ${data.user.is_active ? 'Deactivate Account' : 'Activate Account'}
           </button>
         </div>
-      </div>
-
-      <!-- Tabs -->
-      <div style="display:flex; gap:12px; border-bottom:1px solid rgba(255,255,255,.08); margin-bottom:16px;">
-        <button onclick="switchUserTab('history')" id="tabHistory" style="padding:8px 12px; background:transparent; border:none; border-bottom:2px solid #3b82f6; color:#3b82f6; cursor:pointer; font-size:13px;">History</button>
-        <button onclick="switchUserTab('wallet')" id="tabWallet" style="padding:8px 12px; background:transparent; border:none; border-bottom:2px solid transparent; color:rgba(255,255,255,0.6); cursor:pointer; font-size:13px;">Wallet Activity</button>
-        <button onclick="switchUserTab('transactions')" id="tabTransactions" style="padding:8px 12px; background:transparent; border:none; border-bottom:2px solid transparent; color:rgba(255,255,255,0.6); cursor:pointer; font-size:13px;">Transactions</button>
-        <button onclick="switchUserTab('trades')" id="tabTrades" style="padding:8px 12px; background:transparent; border:none; border-bottom:2px solid transparent; color:rgba(255,255,255,0.6); cursor:pointer; font-size:13px;">Trades</button>
-        <button onclick="switchUserTab('security')" id="tabSecurity" style="padding:8px 12px; background:transparent; border:none; border-bottom:2px solid transparent; color:rgba(255,255,255,0.6); cursor:pointer; font-size:13px;">Security</button>
-      </div>
-
-      <!-- Tab Content -->
-      <div id="tabHistoryContent" style="display:block;">
-        <div style="background:rgba(255,255,255,.02); padding:12px; border-radius:8px; font-size:13px; color:rgba(255,255,255,0.6);">
-          Account created ${formatDate(data.user.created_at)}
-        </div>
-      </div>
-
-      <div id="tabWalletContent" style="display:none;">
-        <p style="color:rgba(255,255,255,0.5); font-size:13px;">Wallet details would appear here</p>
-      </div>
-
-      <div id="tabTransactionsContent" style="display:none;">
-        <table style="width:100%; font-size:12px; border-collapse:collapse;">
-          <thead style="border-bottom:1px solid rgba(255,255,255,.08);">
-            <tr>
-              <th style="text-align:left; padding:6px; color:rgba(255,255,255,0.6);">Type</th>
-              <th style="text-align:left; padding:6px; color:rgba(255,255,255,0.6);">Symbol</th>
-              <th style="text-align:left; padding:6px; color:rgba(255,255,255,0.6);">Amount</th>
-              <th style="text-align:left; padding:6px; color:rgba(255,255,255,0.6);">Status</th>
-              <th style="text-align:left; padding:6px; color:rgba(255,255,255,0.6);">Date</th>
-            </tr>
-          </thead>
-          <tbody>${transactionsHTML}</tbody>
-        </table>
-      </div>
-
-      <div id="tabTradesContent" style="display:none;">
-        <table style="width:100%; font-size:12px; border-collapse:collapse;">
-          <thead style="border-bottom:1px solid rgba(255,255,255,.08);">
-            <tr>
-              <th style="text-align:left; padding:6px; color:rgba(255,255,255,0.6);">Pair</th>
-              <th style="text-align:left; padding:6px; color:rgba(255,255,255,0.6);">Side</th>
-              <th style="text-align:left; padding:6px; color:rgba(255,255,255,0.6);">Amount</th>
-              <th style="text-align:left; padding:6px; color:rgba(255,255,255,0.6);">Price</th>
-              <th style="text-align:left; padding:6px; color:rgba(255,255,255,0.6);">Status</th>
-              <th style="text-align:left; padding:6px; color:rgba(255,255,255,0.6);">Opened</th>
-            </tr>
-          </thead>
-          <tbody>${tradesHTML}</tbody>
-        </table>
-      </div>
-
-      <div id="tabSecurityContent" style="display:none;">
-        <div style="background:rgba(255,255,255,.02); padding:12px; border-radius:8px; font-size:13px;">
-          <p><strong>2FA Status:</strong> <span style="color:rgba(255,255,255,0.5);">Not enabled</span></p>
-          <p><strong>Last Login:</strong> <span style="color:rgba(255,255,255,0.5);">Unknown</span></p>
-          <p style="margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,.08);">
-            <button style="padding:6px 12px; background:rgba(239,68,68,0.2); border:1px solid rgba(239,68,68,0.5); color:#fca5a5; border-radius:6px; cursor:pointer; font-size:12px;">Force Password Reset</button>
-          </p>
-        </div>
-      </div>
-    `;
-
-    panel.style.display = 'block';
-  } catch (e) {
-    alert('Unable to load user details.');
-    console.error(e);
+      </div>`;
+  } catch(e) {
+    content.innerHTML = `<div class="adm-table-error" style="padding:16px">Error: ${e.message}</div>`;
   }
 }
 
-function switchUserTab(tab) {
-  document.querySelectorAll('[id^="tab"]:not([id^="tabHistory"]):not([id^="tabWallet"]):not([id^="tabTransactions"]):not([id^="tabTrades"]):not([id^="tabSecurity"])').forEach(el => el.style.display = 'none');
-  document.querySelectorAll('[id$="Content"]').forEach(el => el.style.display = 'none');
-  document.querySelectorAll('[id^="tab"]:not([id$="Content"])').forEach(btn => btn.style.borderBottomColor = 'transparent');
-  document.querySelectorAll('[id^="tab"]:not([id$="Content"])').forEach(btn => btn.style.color = 'rgba(255,255,255,0.6)');
-
-  const tabBtn = document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1));
-  const tabContent = document.getElementById('tab' + tab.charAt(0).toUpperCase() + tab.slice(1) + 'Content');
-
-  if (tabBtn) {
-    tabBtn.style.borderBottomColor = '#3b82f6';
-    tabBtn.style.color = '#3b82f6';
-  }
-  if (tabContent) {
-    tabContent.style.display = 'block';
-  }
+function switchDetailTab(tab) {
+  document.querySelectorAll('.adm-detail-content').forEach(c => c.classList.remove('active'));
+  document.querySelectorAll('.adm-detail-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('detailTab' + tab.charAt(0).toUpperCase() + tab.slice(1)).classList.add('active');
+  event.target.classList.add('active');
 }
 
 function closeUserDetail() {
   document.getElementById('userDetailPanel').style.display = 'none';
 }
 
-
-
-async function toggleUserActive(userId) {
+async function toggleUserActive(userId, email, isCurrentlyActive) {
   try {
-    const res = await fetch(`/api/admin/user/${userId}/toggle-active`, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
+    const res  = await fetch(`/api/admin/user/${userId}/toggle-active`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
     });
     const data = await res.json();
-    if (data.error) {
-      return alert('Error: ' + data.error);
+    if (data.error) { showToast('Error: ' + data.error, 'error'); return; }
+    showToast(`${email} ${isCurrentlyActive ? 'deactivated' : 'activated'}`);
+    loadUsers();
+    closeUserDetail();
+  } catch(e) { showToast('Failed to update user', 'error'); }
+}
+
+// ─── Wallet Hashes ────────────────────────────────────────────────────────────
+async function loadHashes() {
+  const tbody = document.getElementById('hashGrid');
+  tbody.innerHTML = '<tr><td colspan="4" class="adm-table-loading">Loading…</td></tr>';
+  try {
+    const res  = await fetch('/api/admin/get-hashes');
+    if (!res.ok) throw new Error('Failed');
+    const data = await res.json();
+    const statEl = document.getElementById('statHashes');
+    if (statEl) statEl.textContent = data.length;
+    if (!data.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="adm-table-empty">No wallet hashes configured</td></tr>';
+      return;
     }
-    await loadUsers();
-    alert('User status updated.');
-  } catch (e) {
-    alert('Failed to update user status.');
-    console.error(e);
+    tbody.innerHTML = data.map(h => `
+      <tr>
+        <td>
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="coin-icon ${h.symbol.toLowerCase()} sm">${h.symbol}</span>
+            <span style="font-weight:700;color:var(--text-1)">${h.symbol}</span>
+          </div>
+        </td>
+        <td><span class="adm-mono adm-address-full">${h.address}</span></td>
+        <td><span style="color:var(--text-3);font-size:12px">${h.note || '—'}</span></td>
+        <td><span class="adm-badge badge-success">Active</span></td>
+      </tr>`).join('');
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="4" class="adm-table-error">Error: ${e.message}</td></tr>`;
   }
 }
 
+async function saveHash(e) {
+  e.preventDefault();
+  const symbol  = document.getElementById('symbol').value.trim();
+  const address = document.getElementById('address').value.trim();
+  const note    = document.getElementById('note').value.trim();
+  try {
+    const res  = await fetch('/api/admin/set-hash', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({symbol, address, note}),
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(`Hash saved for ${symbol}`);
+      document.getElementById('hashForm').reset();
+      loadHashes();
+    } else showToast('Error: ' + (data.error || 'Unknown'), 'error');
+  } catch(e) { showToast('Request failed', 'error'); }
+}
+
+// ─── Support Tickets ──────────────────────────────────────────────────────────
+let _replyTicketId = null;
+async function loadTickets() {
+  const tbody = document.getElementById('ticketGrid');
+  tbody.innerHTML = '<tr><td colspan="5" class="adm-table-loading">Loading…</td></tr>';
+  try {
+    const res  = await fetch('/api/admin/support/tickets');
+    if (!res.ok) throw new Error('Failed');
+    const data = await res.json();
+    const badge = document.getElementById('badgeTickets');
+    if (badge) badge.textContent = data.length || '';
+    const statEl = document.getElementById('statTickets');
+    if (statEl) statEl.textContent = data.length;
+    if (!data.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="adm-table-empty">No support tickets</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.map(t => `
+      <tr>
+        <td><span class="adm-mono" style="color:var(--text-3)">#${t.ticket_id}</span></td>
+        <td>${t.user_email}</td>
+        <td>${t.subject}</td>
+        <td><span class="adm-badge badge-warning">Open</span></td>
+        <td>
+          <button class="adm-btn-ghost adm-btn-sm" onclick="openReplyModal('${t.ticket_id}')">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+            Reply
+          </button>
+        </td>
+      </tr>`).join('');
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="5" class="adm-table-error">Error: ${e.message}</td></tr>`;
+  }
+}
+
+function openReplyModal(ticketId) {
+  _replyTicketId = ticketId;
+  document.getElementById('replyTicketId').textContent = '#' + ticketId;
+  document.getElementById('replyMessage').value = '';
+  document.getElementById('replyError').textContent = '';
+  document.getElementById('replyModal').classList.add('open');
+}
+function closeReplyModal() { document.getElementById('replyModal').classList.remove('open'); }
+document.getElementById('replyModal').addEventListener('click', e => { if (e.target.id === 'replyModal') closeReplyModal(); });
+
+async function submitReply() {
+  const msg = document.getElementById('replyMessage').value.trim();
+  if (!msg) { document.getElementById('replyError').textContent = 'Message is required.'; return; }
+  try {
+    const res  = await fetch(`/api/admin/support/ticket/${_replyTicketId}/reply`, {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({message: msg}),
+    });
+    const data = await res.json();
+    if (data.success) { closeReplyModal(); showToast('Reply sent'); loadTickets(); }
+    else { document.getElementById('replyError').textContent = data.error || 'Failed to send reply'; }
+  } catch(e) { document.getElementById('replyError').textContent = 'Network error'; }
+}
+
+// Legacy alias kept for backward compat
+function reply(ticket_id) { openReplyModal(ticket_id); }
+
+// ─── Trades ──────────────────────────────────────────────────────────────────
+let _allTrades = [];
+
+async function loadTrades() {
+  const tbody  = document.getElementById('tradesGrid');
+  const filter = (document.getElementById('tradeStatusFilter') || {}).value || '';
+  tbody.innerHTML = '<tr><td colspan="11" class="adm-table-loading">Loading…</td></tr>';
+
+  try {
+    const res = await fetch('/api/admin/trades');
+    if (!res.ok) throw new Error('Failed');
+    _allTrades = await res.json();
+
+    // Badge
+    const open = _allTrades.filter(t => t.status === 'open').length;
+    const badge = document.getElementById('badgeTrades');
+    if (badge) badge.textContent = open || '';
+
+    // Summary strip
+    const totalPnl = _allTrades.reduce((s, t) => s + (t.pnl || 0), 0);
+    const sumEl = document.getElementById('tradeSummary');
+    if (sumEl) {
+      sumEl.innerHTML = `
+        <div class="adm-trade-stat">
+          <div class="adm-stat-value">${_allTrades.length}</div>
+          <div class="adm-stat-label">Total Trades</div>
+        </div>
+        <div class="adm-trade-stat">
+          <div class="adm-stat-value" style="color:var(--success)">${_allTrades.filter(t=>t.status==='open').length}</div>
+          <div class="adm-stat-label">Open</div>
+        </div>
+        <div class="adm-trade-stat">
+          <div class="adm-stat-value" style="color:var(--text-3)">${_allTrades.filter(t=>t.status==='closed').length}</div>
+          <div class="adm-stat-label">Closed</div>
+        </div>
+        <div class="adm-trade-stat">
+          <div class="adm-stat-value" style="color:${totalPnl>=0?'var(--success)':'var(--danger)'}">${totalPnl>=0?'+':''}$${Math.abs(totalPnl).toFixed(2)}</div>
+          <div class="adm-stat-label">Total PnL</div>
+        </div>`;
+    }
+
+    const display = filter ? _allTrades.filter(t => t.status === filter) : _allTrades;
+    renderTrades(display);
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="11" class="adm-table-error">Error: ${e.message}</td></tr>`;
+  }
+}
+
+function renderTrades(trades) {
+  const tbody = document.getElementById('tradesGrid');
+  if (!trades.length) {
+    tbody.innerHTML = '<tr><td colspan="11" class="adm-table-empty">No trades found</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = trades.map(t => {
+    const pnl     = t.pnl || 0;
+    const pnlFmt  = (pnl >= 0 ? '+' : '') + '$' + Math.abs(pnl).toFixed(4);
+    const pnlCls  = pnl >= 0 ? 'chg-up' : 'chg-down';
+    const isBuy   = t.side === 'BUY';
+    const isOpen  = t.status === 'open';
+
+    const actionBtn = isOpen
+      ? `<button class="adm-btn-reject adm-btn-sm" onclick="toggleTrade(${t.id},'close')" title="Close trade &amp; calculate PnL">
+           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+           Close
+         </button>`
+      : `<button class="adm-btn-approve adm-btn-sm" onclick="toggleTrade(${t.id},'open')" title="Re-open trade">
+           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+           Re-open
+         </button>`;
+
+    return `
+      <tr>
+        <td><span class="adm-mono" style="color:var(--text-3)">${t.trade_id}</span></td>
+        <td>
+          <div style="font-size:13px;font-weight:600;color:var(--text-1)">${t.user_name}</div>
+          <div style="font-size:11px;color:var(--text-3)">${t.user_email}</div>
+        </td>
+        <td><span class="adm-mono" style="font-weight:700">${t.pair}</span></td>
+        <td><span class="adm-badge ${isBuy?'badge-success':'badge-danger'}">${t.side}</span></td>
+        <td><span class="adm-mono">$${Number(t.amount).toFixed(2)}</span></td>
+        <td><span class="adm-mono">$${Number(t.entry_price || 0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4})}</span></td>
+        <td><span class="adm-mono">$${Number(t.current_price || t.entry_price || 0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:4})}</span></td>
+        <td><span class="adm-mono ${pnlCls}" style="font-weight:700">${pnlFmt}</span></td>
+        <td><span class="adm-badge ${t.status==='open'?'badge-success':t.status==='pending'?'badge-warning':'badge-default'}">${t.status}</span></td>
+        <td><span class="adm-date">${formatDate(t.opened_at)}</span></td>
+        <td>${actionBtn}</td>
+      </tr>`;
+  }).join('');
+}
+
+async function toggleTrade(tradeId, action) {
+  try {
+    const res  = await fetch(`/api/admin/trade/${tradeId}/toggle`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({action}),
+    });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message || `Trade ${action}d`);
+      loadTrades();
+    } else {
+      showToast('Error: ' + (data.error || 'Unknown'), 'error');
+    }
+  } catch(e) { showToast('Request failed', 'error'); }
+}
+
+// ─── Coming Soon ──────────────────────────────────────────────────────────────
+async function loadComingSoonState() {
+  try {
+    const res = await fetch('/admin/coming-soon/state');
+    if (!res.ok) return;
+    const j = await res.json();
+    const el = document.getElementById('comingSoonStatus');
+    if (el) {
+      el.textContent = j.coming_soon ? 'Coming Soon' : 'Live';
+      const btn = document.getElementById('comingSoonBtn');
+      if (btn) btn.className = 'adm-mode-btn ' + (j.coming_soon ? 'mode-soon' : 'mode-live');
+    }
+  } catch(e) { console.warn('coming soon state load failed', e); }
+}
+
+async function toggleComingSoon() {
+  try {
+    const res = await fetch('/admin/coming-soon/toggle', {method:'POST'});
+    const j   = await res.json();
+    if (j.error) { showToast('Error: ' + j.error, 'error'); return; }
+    const el  = document.getElementById('comingSoonStatus');
+    if (el) el.textContent = j.coming_soon ? 'Coming Soon' : 'Live';
+    const btn = document.getElementById('comingSoonBtn');
+    if (btn) btn.className = 'adm-mode-btn ' + (j.coming_soon ? 'mode-soon' : 'mode-live');
+    showToast('Site mode updated to: ' + (j.coming_soon ? 'Coming Soon' : 'Live'));
+  } catch(e) { showToast('Toggle failed', 'error'); }
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
 function initAdminDashboard() {
   fetchPending();
   loadHashes();
   loadUsers();
   loadTickets();
+  loadTrades();
   loadComingSoonState();
-  setInterval(fetchPending, 15000);
+  setInterval(fetchPending, 30000);
+  setInterval(loadTrades, 60000);
   const btn = document.getElementById('comingSoonBtn');
   if (btn) btn.addEventListener('click', toggleComingSoon);
 }
@@ -413,24 +534,4 @@ if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initAdminDashboard);
 } else {
   initAdminDashboard();
-}
-
-async function loadComingSoonState(){
-  try{
-    const res = await fetch('/admin/coming-soon/state');
-    if (!res.ok) return;
-    const j = await res.json();
-    const el = document.getElementById('comingSoonStatus');
-    if (el) el.textContent = j.coming_soon ? 'ON' : 'OFF';
-  }catch(e){console.warn('coming soon state load failed', e)}
-}
-
-async function toggleComingSoon(){
-  try{
-    const res = await fetch('/admin/coming-soon/toggle', {method:'POST'});
-    const j = await res.json();
-    if (j.error) return alert('Error: '+j.error);
-    const el = document.getElementById('comingSoonStatus');
-    if (el) el.textContent = j.coming_soon ? 'ON' : 'OFF';
-  }catch(e){alert('Toggle failed: '+e)}
 }

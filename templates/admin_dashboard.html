@@ -1,92 +1,316 @@
 {% extends "base.html" %}
-{% block title %}Admin Dashboard — VaultCore Wallet{% endblock %}
-
+{% block title %}Admin — VaultCore Exchange{% endblock %}
 {% block content %}
-<div class="admin-wrapper">
-  <h1>Admin Dashboard</h1>
 
-  <!-- Pending Transactions Hero Cards -->
-  <section>
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:24px;">
-      <div>
-        <h2>Pending Transactions</h2>
-        <p style="margin-bottom:0; color:rgba(255,255,255,0.72); font-size:14px;">Review and manage pending transactions</p>
+<div class="adm-page">
+
+  <!-- ── Header ── -->
+  <div class="adm-header">
+    <div>
+      <div class="adm-header-badge">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Admin Console
       </div>
-      <button type="button" onclick="fetchPending()" style="padding:10px 16px; border-radius:8px; background:rgba(34,197,94,0.2); border:1px solid rgba(34,197,94,0.5);">↻ Refresh</button>
+      <h1 class="adm-title">Exchange Dashboard</h1>
+      <p class="adm-subtitle">Manage transactions, users, wallets and platform settings</p>
     </div>
-    <div id="pendingTxGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:16px; margin-bottom:24px;"></div>
-  </section>
+    <button class="adm-refresh-all" onclick="refreshAll()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      Refresh All
+    </button>
+  </div>
 
-  <!-- Wallet Hashes Hero Cards -->
-  <section>
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:24px;">
-      <div>
-        <h2>Wallet Hashes</h2>
-        <p style="margin-bottom:0; color:rgba(255,255,255,0.72); font-size:14px;">Manage deposit wallet addresses</p>
+  <!-- ── Stats Strip ── -->
+  <div class="adm-stats">
+    <div class="adm-stat">
+      <div class="adm-stat-value" id="statUsers">—</div>
+      <div class="adm-stat-label">Total Users</div>
+    </div>
+    <div class="adm-stat">
+      <div class="adm-stat-value" id="statPending" style="color:var(--warning)">—</div>
+      <div class="adm-stat-label">Pending Txs</div>
+    </div>
+    <div class="adm-stat">
+      <div class="adm-stat-value" id="statTickets" style="color:var(--accent)">—</div>
+      <div class="adm-stat-label">Open Tickets</div>
+    </div>
+    <div class="adm-stat">
+      <div class="adm-stat-value" id="statHashes">—</div>
+      <div class="adm-stat-label">Wallet Hashes</div>
+    </div>
+    <div class="adm-stat adm-stat-mode">
+      <div class="adm-stat-label" style="margin-bottom:6px">Site Mode</div>
+      <button class="adm-mode-btn" id="comingSoonBtn">
+        <span id="comingSoonStatus">Live</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Section Tabs ── -->
+  <div class="adm-tabs">
+    <button class="adm-tab active" onclick="showSection('pending')" id="btnPending">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Transactions
+      <span class="adm-tab-badge" id="badgePending"></span>
+    </button>
+    <button class="adm-tab" onclick="showSection('users')" id="btnUsers">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Users
+    </button>
+    <button class="adm-tab" onclick="showSection('wallets')" id="btnWallets">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="1"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+      Wallet Hashes
+    </button>
+    <button class="adm-tab" onclick="showSection('tickets')" id="btnTickets">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      Support
+      <span class="adm-tab-badge" id="badgeTickets"></span>
+    </button>
+    <button class="adm-tab" onclick="showSection('trades')" id="btnTrades">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Trades
+      <span class="adm-tab-badge" id="badgeTrades"></span>
+    </button>
+  </div>
+
+  <!-- ════ PENDING TRANSACTIONS ════ -->
+  <div class="adm-section active" id="sectionPending">
+    <div class="adm-section-header">
+      <h2>Pending Transactions</h2>
+      <button class="adm-btn-ghost" onclick="fetchPending()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        Refresh
+      </button>
+    </div>
+    <div class="adm-table-wrap">
+      <table class="adm-table">
+        <thead>
+          <tr>
+            <th>TX ID</th>
+            <th>User</th>
+            <th>Type</th>
+            <th>Asset</th>
+            <th>Amount</th>
+            <th>Address</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="pendingTxGrid">
+          <tr><td colspan="7" class="adm-table-loading">Loading transactions…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ════ USERS ════ -->
+  <div class="adm-section" id="sectionUsers">
+    <div class="adm-section-header">
+      <h2>Users</h2>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input class="adm-search" id="userSearch" placeholder="Search email or name…" oninput="filterUsers()" />
+        <button class="adm-btn-ghost" onclick="loadUsers()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          Refresh
+        </button>
       </div>
-      <button type="button" onclick="loadHashes()" style="padding:10px 16px; border-radius:8px; background:rgba(34,197,94,0.2); border:1px solid rgba(34,197,94,0.5);">↻ Refresh</button>
     </div>
-    <div id="hashGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:16px; margin-bottom:24px;"></div>
-
-    <!-- Add/Update Hash Card -->
-    <div style="padding:20px; background:linear-gradient(135deg, rgba(34,197,94,0.1), rgba(59,130,246,0.1)); border:1px solid rgba(255,255,255,.08); border-radius:12px;">
-      <h3 style="margin-top:0; color:rgba(255,255,255,0.95);">Add / Update Hash</h3>
-      <form id="hashForm" onsubmit="saveHash(event)" style="display:grid; gap:12px;">
-        <input id="symbol" placeholder="Symbol (e.g. BTC)" style="padding:10px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); border-radius:6px; color:rgba(255,255,255,0.95);" required />
-        <input id="address" placeholder="Address / Hash" style="padding:10px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); border-radius:6px; color:rgba(255,255,255,0.95);" required />
-        <input id="note" placeholder="Note (optional)" style="padding:10px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); border-radius:6px; color:rgba(255,255,255,0.95);" />
-        <button type="submit" style="padding:10px; background:rgba(34,197,94,0.3); border:1px solid rgba(34,197,94,0.5); color:#86efac; border-radius:6px; cursor:pointer; font-weight:500;">Save Hash</button>
-      </form>
+    <div class="adm-table-wrap">
+      <table class="adm-table">
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>Joined</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="userCardsGrid">
+          <tr><td colspan="5" class="adm-table-loading">Loading users…</td></tr>
+        </tbody>
+      </table>
     </div>
-  </section>
 
-  <section>
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:24px;">
-      <div>
-        <h2>Manage Users</h2>
-        <p style="margin-bottom:0; color:rgba(255,255,255,0.72); font-size:14px;">
-          Click on any user card to view and manage their account details.
-        </p>
+    <!-- User detail panel -->
+    <div id="userDetailPanel" class="adm-detail-panel" style="display:none">
+      <div class="adm-detail-header">
+        <h3 id="detailTitle">User Detail</h3>
+        <button class="adm-btn-ghost" onclick="closeUserDetail()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          Close
+        </button>
       </div>
-      <button type="button" onclick="loadUsers()" style="padding:10px 16px; border-radius:8px; background:rgba(34,197,94,0.2); border:1px solid rgba(34,197,94,0.5);">↻ Refresh</button>
-    </div>
-
-    <!-- User Cards Grid -->
-    <div id="userCardsGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:16px; margin-bottom:24px;"></div>
-
-    <!-- User Detail Panel -->
-    <div id="userDetailPanel" style="display:none; padding:24px; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; margin-top:24px;">
-      <button type="button" onclick="closeUserDetail()" style="float:right; padding:4px 8px; background:transparent; border:none; color:rgba(255,255,255,0.6); cursor:pointer; font-size:18px;">✕</button>
       <div id="userDetailContent"></div>
     </div>
-  </section>
+  </div>
 
-  <!-- Support Tickets Hero Cards -->
-  <section>
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:24px;">
-      <div>
-        <h2>Support Tickets</h2>
-        <p style="margin-bottom:0; color:rgba(255,255,255,0.72); font-size:14px;">Respond to user support requests</p>
-      </div>
-      <button type="button" onclick="loadTickets()" style="padding:10px 16px; border-radius:8px; background:rgba(34,197,94,0.2); border:1px solid rgba(34,197,94,0.5);">↻ Refresh</button>
+  <!-- ════ WALLET HASHES ════ -->
+  <div class="adm-section" id="sectionWallets">
+    <div class="adm-section-header">
+      <h2>Wallet Hashes</h2>
+      <button class="adm-btn-ghost" onclick="loadHashes()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        Refresh
+      </button>
     </div>
-    <div id="ticketGrid" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:16px; margin-bottom:24px;"></div>
-  </section>
+    <div class="adm-table-wrap" style="margin-bottom:20px">
+      <table class="adm-table">
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Address / Hash</th>
+            <th>Note</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="hashGrid">
+          <tr><td colspan="4" class="adm-table-loading">Loading wallet hashes…</td></tr>
+        </tbody>
+      </table>
+    </div>
 
-  <!-- Site Mode Hero Card -->
-  <section>
-    <div style="padding:24px; background:linear-gradient(135deg, rgba(59,130,246,0.1), rgba(139,92,246,0.1)); border:1px solid rgba(255,255,255,.08); border-radius:12px; display:flex; justify-content:space-between; align-items:center; gap:20px;">
-      <div>
-        <h2 style="margin:0 0 8px 0;">Site Mode</h2>
-        <p style="margin:0; color:rgba(255,255,255,0.72); font-size:14px;">Toggle the "Coming Soon" page for public visitors</p>
+    <!-- Add / Update Hash form -->
+    <div class="adm-form-card">
+      <div class="adm-form-card-title">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add / Update Wallet Hash
       </div>
-      <div style="text-align:right;">
-        <button id="comingSoonBtn" style="padding:10px 20px; background:rgba(59,130,246,0.3); border:1px solid rgba(59,130,246,0.5); color:#93c5fd; border-radius:6px; cursor:pointer; font-weight:500;">Toggle</button>
-        <div id="comingSoonStatus" style="margin-top:12px; font-weight:bold; font-size:14px;"></div>
+      <form id="hashForm" onsubmit="saveHash(event)" class="adm-form">
+        <div class="adm-form-row">
+          <div class="adm-form-group">
+            <label>Symbol</label>
+            <input id="symbol" class="adm-input" placeholder="e.g. BTC" required />
+          </div>
+          <div class="adm-form-group" style="flex:2">
+            <label>Address / Hash</label>
+            <input id="address" class="adm-input" placeholder="Wallet address or hash" required />
+          </div>
+          <div class="adm-form-group">
+            <label>Note <span style="color:var(--text-3)">(optional)</span></label>
+            <input id="note" class="adm-input" placeholder="e.g. Main cold wallet" />
+          </div>
+          <div class="adm-form-group adm-form-action">
+            <label>&nbsp;</label>
+            <button type="submit" class="adm-btn-primary">Save Hash</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ════ SUPPORT TICKETS ════ -->
+  <div class="adm-section" id="sectionTickets">
+    <div class="adm-section-header">
+      <h2>Support Tickets</h2>
+      <button class="adm-btn-ghost" onclick="loadTickets()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        Refresh
+      </button>
+    </div>
+    <div class="adm-table-wrap">
+      <table class="adm-table">
+        <thead>
+          <tr>
+            <th>Ticket</th>
+            <th>User</th>
+            <th>Subject</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="ticketGrid">
+          <tr><td colspan="5" class="adm-table-loading">Loading tickets…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ════ TRADES ════ -->
+  <div class="adm-section" id="sectionTrades">
+    <div class="adm-section-header">
+      <h2>All Trades</h2>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select class="adm-search" id="tradeStatusFilter" onchange="loadTrades()" style="width:150px">
+          <option value="">All Statuses</option>
+          <option value="open">Open</option>
+          <option value="closed">Closed</option>
+          <option value="pending">Pending</option>
+        </select>
+        <button class="adm-btn-ghost" onclick="loadTrades()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          Refresh
+        </button>
       </div>
     </div>
-  </section>
 
+    <!-- Trade summary strip -->
+    <div class="adm-trade-summary" id="tradeSummary"></div>
+
+    <div class="adm-table-wrap">
+      <table class="adm-table">
+        <thead>
+          <tr>
+            <th>Trade ID</th>
+            <th>User</th>
+            <th>Pair</th>
+            <th>Side</th>
+            <th>Amount</th>
+            <th>Entry Price</th>
+            <th>Current</th>
+            <th>PnL</th>
+            <th>Status</th>
+            <th>Opened</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="tradesGrid">
+          <tr><td colspan="11" class="adm-table-loading">Loading trades…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /adm-page -->
+
+<!-- Reply modal -->
+<div class="adm-modal-overlay" id="replyModal">
+  <div class="adm-modal">
+    <div class="adm-modal-head">
+      <span class="adm-modal-title">Reply to Ticket <span id="replyTicketId"></span></span>
+      <button class="adm-btn-ghost" onclick="closeReplyModal()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="adm-modal-body">
+      <textarea id="replyMessage" class="adm-textarea" placeholder="Type your reply…" rows="5"></textarea>
+      <div id="replyError" class="adm-error"></div>
+    </div>
+    <div class="adm-modal-foot">
+      <button class="adm-btn-ghost" onclick="closeReplyModal()">Cancel</button>
+      <button class="adm-btn-primary" onclick="submitReply()">Send Reply</button>
+    </div>
+  </div>
+</div>
+
+<!-- Approve/Reject confirm modal -->
+<div class="adm-modal-overlay" id="txActionModal">
+  <div class="adm-modal" style="max-width:400px">
+    <div class="adm-modal-head">
+      <span class="adm-modal-title" id="txActionTitle">Approve Transaction</span>
+      <button class="adm-btn-ghost" onclick="closeTxModal()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="adm-modal-body">
+      <div id="txActionDesc" style="font-size:14px;color:var(--text-2);margin-bottom:14px"></div>
+      <input id="txActionNote" class="adm-input" placeholder="Admin note (optional)" />
+    </div>
+    <div class="adm-modal-foot">
+      <button class="adm-btn-ghost" onclick="closeTxModal()">Cancel</button>
+      <button class="adm-btn-confirm" id="txActionConfirm">Confirm</button>
+    </div>
+  </div>
 </div>
 
 <script src="{{ url_for('static', filename='assets/js/admin.js') }}"></script>

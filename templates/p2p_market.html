@@ -69,7 +69,7 @@
       </select>
 
       <div class="p2p-filter-actions">
-        <button class="btn-refresh-p2p" onclick="renderOffers()">
+        <button class="btn-refresh-p2p" onclick="fetchOffers()">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
           <span>Refresh</span>
         </button>
@@ -168,32 +168,79 @@
 
 
 <script>
-// ─── Data ────────────────────────────────────────────────────────────────────
+// ─── State ───────────────────────────────────────────────────────────────────
 const AVATAR_COLORS = ['#c9a84c','#627eea','#0ecb81','#9945ff','#f7931a','#e6007a','#0085c3','#f3ba2f'];
 
-const ALL_OFFERS = [
-  { id:1,  trader:'CryptoKing92',   trades:1420, rating:99.2, side:'sell', coin:'USDT', available:8500,  fiat:'NGN', price:1850,     payment:['Bank Transfer'] },
-  { id:2,  trader:'FastCash_NG',    trades:873,  rating:98.5, side:'sell', coin:'USDT', available:12000, fiat:'NGN', price:1870,     payment:['Bank Transfer','Mobile Money'] },
-  { id:3,  trader:'QuickSwap_KE',   trades:412,  rating:99.6, side:'sell', coin:'USDT', available:3000,  fiat:'KES', price:131,      payment:['M-Pesa'] },
-  { id:4,  trader:'StableSwap',     trades:2100, rating:99.8, side:'sell', coin:'USDT', available:25000, fiat:'USD', price:1.001,    payment:['Bank Transfer','PayPal'] },
-  { id:5,  trader:'NairaMaster',    trades:560,  rating:97.4, side:'buy',  coin:'USDT', available:5000,  fiat:'NGN', price:1830,     payment:['Bank Transfer'] },
-  { id:6,  trader:'SatoshiFan',     trades:304,  rating:98.1, side:'sell', coin:'BTC',  available:0.25,  fiat:'NGN', price:110500000, payment:['Bank Transfer'] },
-  { id:7,  trader:'BlockDealer',    trades:88,   rating:96.8, side:'sell', coin:'BTC',  available:0.1,   fiat:'USD', price:67200,    payment:['Zelle','PayPal'] },
-  { id:8,  trader:'HodlKing',       trades:622,  rating:99.0, side:'buy',  coin:'BTC',  available:0.5,   fiat:'NGN', price:109800000, payment:['Bank Transfer'] },
-  { id:9,  trader:'EthTrader01',    trades:203,  rating:97.8, side:'sell', coin:'ETH',  available:5.0,   fiat:'USD', price:3550,     payment:['PayPal','Zelle'] },
-  { id:10, trader:'DefiWhale',      trades:914,  rating:99.4, side:'sell', coin:'ETH',  available:12.5,  fiat:'GBP', price:2800,     payment:['Bank Transfer'] },
-  { id:11, trader:'Lagos_Eth',      trades:145,  rating:97.2, side:'sell', coin:'ETH',  available:2.0,   fiat:'NGN', price:5800000,  payment:['Bank Transfer'] },
-  { id:12, trader:'BinancePro',     trades:1830, rating:99.9, side:'sell', coin:'BNB',  available:150,   fiat:'USD', price:580,      payment:['PayPal','Bank Transfer'] },
-  { id:13, trader:'ChainMaster',    trades:342,  rating:98.3, side:'sell', coin:'BNB',  available:80,    fiat:'NGN', price:950000,   payment:['Bank Transfer'] },
-  { id:14, trader:'SolHunter',      trades:267,  rating:98.7, side:'sell', coin:'SOL',  available:200,   fiat:'USD', price:172,      payment:['Zelle','PayPal'] },
-  { id:15, trader:'AfriSol',        trades:89,   rating:96.5, side:'sell', coin:'SOL',  available:50,    fiat:'NGN', price:280000,   payment:['Bank Transfer'] },
-  { id:16, trader:'CardanoKing',    trades:178,  rating:97.6, side:'sell', coin:'ADA',  available:5000,  fiat:'USD', price:0.52,     payment:['PayPal'] },
-  { id:17, trader:'LovelaceTrader', trades:94,   rating:98.2, side:'sell', coin:'ADA',  available:10000, fiat:'NGN', price:850,      payment:['Bank Transfer','Mobile Money'] },
-];
+let currentSide  = 'buy';
+let currentCoin  = 'USDT';
+let activeOffer  = null;
+let _offers      = [];     // loaded from backend
+let _dataSource  = 'mock'; // 'binance' or 'mock'
 
-let currentSide = 'buy';
-let currentCoin = 'USDT';
-let activeOffer = null;
+// ─── Load from backend ───────────────────────────────────────────────────────
+async function fetchOffers() {
+  const list     = document.getElementById('p2pOfferList');
+  const fiat     = document.getElementById('p2pFiatSelect').value    || 'NGN';
+  const payment  = document.getElementById('p2pPaymentSelect').value || '';
+
+  // tradeType: BUY = I want to buy crypto → find sellers
+  //            SELL = I want to sell crypto → find buyers
+  const tradeType = currentSide === 'buy' ? 'BUY' : 'SELL';
+
+  list.innerHTML = `
+    <div class="p2p-empty" style="padding:32px">
+      <svg class="p2p-empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <div>Loading offers…</div>
+    </div>`;
+
+  try {
+    const params = new URLSearchParams({asset: currentCoin, fiat, tradeType, rows: 12});
+    const res    = await fetch(`/api/p2p/binance?${params}`);
+    if (!res.ok) throw new Error('Failed to fetch');
+    const json   = await res.json();
+    _dataSource  = json.source;
+
+    // Normalise both Binance and mock formats into a common shape
+    _offers = (json.data || []).map((row, i) => {
+      const adv  = row.adv         || {};
+      const user = row.advertiser  || {};
+      return {
+        id:        i + 1,
+        trader:    user.nickName        || `Trader${i+1}`,
+        trades:    user.monthOrderCount || 0,
+        rating:    Math.round((user.monthFinishRate || user.positiveRate || 0.99) * 100),
+        side:      (adv.tradeType || tradeType).toLowerCase(),
+        coin:      adv.asset      || currentCoin,
+        available: parseFloat(adv.surplusAmount || adv.tradableQuantity || 0),
+        fiat:      adv.fiatUnit   || fiat,
+        price:     parseFloat(adv.price || 0),
+        payment:   (adv.payTypes  || []).map(p => p.tradeMethodName || p.identifier || p),
+        minLimit:  parseFloat(adv.minSingleTransAmount || 0),
+        maxLimit:  parseFloat(adv.maxSingleTransAmount || 0),
+        isVerified: user.userGrade > 0,
+        isOnline:   user.isOnline !== false,
+        advNo:      adv.advNo || String(i),
+      };
+    });
+
+    renderOffers();
+
+    // Show data source badge
+    const sourceLabel = _dataSource === 'binance'
+      ? '<span style="font-size:10px;color:var(--success);font-weight:700">● Live Binance P2P</span>'
+      : '<span style="font-size:10px;color:var(--text-3)">● Simulated data</span>';
+    const headerEl = document.querySelector('.p2p-header p');
+    if (headerEl) headerEl.innerHTML = `Buy and sell crypto directly with other users — secured by escrow &nbsp; ${sourceLabel}`;
+
+  } catch(e) {
+    list.innerHTML = `
+      <div class="p2p-empty">
+        <div style="color:var(--danger);margin-bottom:8px">Failed to load offers</div>
+        <div style="font-size:12px;color:var(--text-3)">${e.message}</div>
+        <button class="adm-btn-ghost" style="margin-top:12px" onclick="fetchOffers()">Retry</button>
+      </div>`;
+  }
+}
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
 const FIAT_SYM = { NGN:'₦', USD:'$', KES:'KSh ', GHS:'₵', ZAR:'R', GBP:'£', EUR:'€' };
@@ -225,15 +272,10 @@ function paymentTags(methods) {
   return methods.map(m => `<span class="p2p-payment-tag">${m}</span>`).join('');
 }
 
-// ─── Filter ───────────────────────────────────────────────────────────────────
+// ─── Filter (client-side, on already-fetched data) ───────────────────────────
 function getFiltered() {
-  const fiat    = document.getElementById('p2pFiatSelect').value;
   const payment = document.getElementById('p2pPaymentSelect').value;
-  const wantSide = currentSide === 'buy' ? 'sell' : 'buy';
-  return ALL_OFFERS.filter(o =>
-    o.coin === currentCoin &&
-    o.side === wantSide &&
-    (!fiat    || o.fiat === fiat) &&
+  return _offers.filter(o =>
     (!payment || o.payment.includes(payment))
   );
 }
@@ -313,26 +355,26 @@ function renderOffers() {
   }).join('');
 }
 
-function applyFilters() { renderOffers(); }
+function applyFilters() { fetchOffers(); }
 
-// ─── Side & Coin ─────────────────────────────────────────────────────────────
+// ─── Side & Coin (trigger backend re-fetch) ───────────────────────────────────
 function setSide(side) {
   currentSide = side;
   document.getElementById('tabBuy').className  = 'p2p-side-tab buy'  + (side==='buy'  ? ' active' : '');
   document.getElementById('tabSell').className = 'p2p-side-tab sell' + (side==='sell' ? ' active' : '');
-  renderOffers();
+  fetchOffers();
 }
 
 function setCoin(coin) {
   currentCoin = coin;
   document.querySelectorAll('.p2p-coin-tab').forEach(t =>
     t.classList.toggle('active', t.dataset.coin === coin));
-  renderOffers();
+  fetchOffers();
 }
 
 // ─── Modal ───────────────────────────────────────────────────────────────────
 function openTradeModal(id) {
-  activeOffer = ALL_OFFERS.find(o => o.id === id);
+  activeOffer = _offers.find(o => o.id === id);
   if (!activeOffer) return;
   const o    = activeOffer;
   const isBuy = currentSide === 'buy';
@@ -395,7 +437,7 @@ function openCreateModal() {
   alert('Create P2P offer — coming soon.\nSet your own price, limits and payment method.');
 }
 
-renderOffers();
+fetchOffers();
 </script>
 
 {% endblock %}

@@ -1248,7 +1248,8 @@ def api_trade():
             amount=amount,
             entry_price=entry_price,
             current_price=entry_price,
-            status='completed',
+            status='open',
+            pnl=0.0,
         )
         db.session.add(trade)
 
@@ -2821,6 +2822,252 @@ def api_support_message():
         db.session.rollback()
         log.error("Support message failed: %s", e)
         return jsonify({"error": str(e)}), 500
+
+# ══════════════════════════════════════════════════════════════════
+#  ADMIN — TRADE MANAGEMENT
+# ══════════════════════════════════════════════════════════════════
+
+@app.route('/api/admin/trades')
+@admin_required
+def api_admin_trades():
+    """GET /api/admin/trades  — return all trades with user email."""
+    try:
+        trades = (Trade.query
+                  .join(Trade.user)
+                  .order_by(Trade.opened_at.desc())
+                  .limit(200)
+                  .all())
+        result = []
+        for t in trades:
+            result.append({
+                "id":            t.id,
+                "trade_id":      t.trade_id,
+                "user_email":    t.user.email,
+                "user_name":     t.user.full_name or t.user.email,
+                "pair":          t.pair,
+                "side":          t.side,
+                "amount":        t.amount,
+                "entry_price":   t.entry_price,
+                "current_price": t.current_price or t.entry_price,
+                "pnl":           t.pnl or 0.0,
+                "status":        t.status,
+                "opened_at":     t.opened_at.isoformat(),
+                "closed_at":     t.closed_at.isoformat() if t.closed_at else None,
+            })
+        return jsonify(result)
+    except Exception as e:
+        log.error("admin trades: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/admin/trade/<int:trade_id>/toggle', methods=['POST'])
+@admin_required
+def api_admin_toggle_trade(trade_id):
+    """Toggle a trade between open ↔ closed, or force-close with PnL."""
+    data   = request.get_json(force=True) or {}
+    action = data.get("action", "toggle")   # toggle | close | open
+
+    trade = Trade.query.get(trade_id)
+    if not trade:
+        return jsonify({"error": "Trade not found"}), 404
+
+    try:
+        if action == "close" or (action == "toggle" and trade.status == "open"):
+            # Fetch latest price to calculate PnL
+            current_price = trade.current_price or trade.entry_price
+            try:
+                sym = trade.pair.replace("/", "")
+                r   = requests.get(f"{BINANCE_BASE}/api/v3/ticker/price?symbol={sym}", timeout=5)
+                if r.ok:
+                    current_price = float(r.json().get("price", current_price))
+            except Exception:
+                pass
+
+            if trade.entry_price and trade.entry_price > 0:
+                qty   = trade.amount / trade.entry_price
+                pnl   = (current_price - trade.entry_price) * qty
+                if trade.side == "SELL":
+                    pnl = -pnl
+            else:
+                pnl = 0.0
+
+            trade.current_price = current_price
+            trade.pnl           = round(pnl, 4)
+            trade.status        = "closed"
+            trade.closed_at     = datetime.utcnow()
+            msg = f"Trade closed. PnL: ${pnl:+.4f}"
+
+        elif action == "open" or (action == "toggle" and trade.status in ("closed", "pending")):
+            trade.status    = "open"
+            trade.closed_at = None
+            trade.pnl       = 0.0
+            msg = "Trade re-opened"
+
+        else:
+            return jsonify({"error": f"Unknown action '{action}'"}), 400
+
+        db.session.commit()
+
+        # Notify user
+        try:
+            n = Notification(
+                user_id=trade.user_id,
+                title=f"Trade {'closed' if trade.status=='closed' else 're-opened'}: {trade.pair}",
+                message=msg,
+                type="info" if trade.status == "open" else "success",
+            )
+            db.session.add(n)
+            db.session.commit()
+        except Exception:
+            pass
+
+        return jsonify({"success": True, "status": trade.status, "pnl": trade.pnl, "message": msg})
+    except Exception as e:
+        db.session.rollback()
+        log.error("admin toggle trade: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════
+#  BINANCE P2P PROXY
+# ══════════════════════════════════════════════════════════════════
+
+# Realistic fallback data so P2P always has content even without internet
+_P2P_FALLBACK = {
+    "USDT": {
+        "NGN": [
+            {"trader":"CryptoKing_NG",  "trades":1842, "rating":99.3, "price":1850,  "available":9500,  "payment":["Bank Transfer"]},
+            {"trader":"FastNaira",       "trades":671,  "rating":98.7, "price":1865,  "available":5000,  "payment":["Bank Transfer","Mobile Money"]},
+            {"trader":"QuickUSDT",       "trades":2104, "rating":99.6, "price":1840,  "available":20000, "payment":["Bank Transfer"]},
+            {"trader":"NairaXchange",    "trades":389,  "rating":97.9, "price":1872,  "available":3000,  "payment":["Bank Transfer"]},
+            {"trader":"P2PMaster_NG",    "trades":955,  "rating":99.1, "price":1855,  "available":12000, "payment":["Bank Transfer","Opay"]},
+        ],
+        "USD": [
+            {"trader":"StableDealer",   "trades":3210, "rating":99.8, "price":1.001, "available":50000, "payment":["Bank Transfer","PayPal"]},
+            {"trader":"USCryptoTrader", "trades":874,  "rating":98.9, "price":1.002, "available":8000,  "payment":["Zelle","PayPal"]},
+        ],
+        "KES": [
+            {"trader":"KenyaSwap",      "trades":512,  "rating":99.0, "price":130,   "available":5000,  "payment":["M-Pesa"]},
+            {"trader":"NairobiCrypto",  "trades":287,  "rating":98.2, "price":132,   "available":2000,  "payment":["M-Pesa","Airtel Money"]},
+        ],
+    },
+    "BTC": {
+        "NGN": [
+            {"trader":"SatoshiNG",      "trades":304,  "rating":98.1, "price":110500000, "available":0.25, "payment":["Bank Transfer"]},
+            {"trader":"BTCHodler",      "trades":621,  "rating":99.0, "price":109800000, "available":0.5,  "payment":["Bank Transfer"]},
+        ],
+        "USD": [
+            {"trader":"BitcoinBroker",  "trades":1102, "rating":99.4, "price":67200, "available":1.5,  "payment":["Zelle","Bank Transfer"]},
+            {"trader":"HodlDealer",     "trades":440,  "rating":98.6, "price":66900, "available":0.8,  "payment":["PayPal","Zelle"]},
+        ],
+    },
+    "ETH": {
+        "NGN": [
+            {"trader":"EthLagos",       "trades":145,  "rating":97.2, "price":5800000, "available":2.0, "payment":["Bank Transfer"]},
+            {"trader":"NigeriaETH",     "trades":289,  "rating":98.5, "price":5750000, "available":5.0, "payment":["Bank Transfer"]},
+        ],
+        "USD": [
+            {"trader":"EthTrader01",    "trades":203,  "rating":97.8, "price":3550, "available":5.0,  "payment":["PayPal","Zelle"]},
+            {"trader":"DefiWhale",      "trades":914,  "rating":99.4, "price":3530, "available":12.5, "payment":["Bank Transfer"]},
+        ],
+    },
+}
+
+def _build_p2p_fallback(asset, fiat, trade_type, rows):
+    """Build fallback P2P offer rows from local data."""
+    asset = asset.upper()
+    fiat  = fiat.upper()
+    pool  = _P2P_FALLBACK.get(asset, {}).get(fiat, [])
+    if not pool:
+        # generic fallback
+        return []
+    import random
+    result = []
+    for i, item in enumerate(pool[:rows]):
+        jitter = 1 + (random.randint(-3, 3) / 1000)
+        result.append({
+            "adv": {
+                "advNo":          f"MOCK{asset}{i+1:04d}",
+                "tradeType":      trade_type,
+                "asset":          asset,
+                "fiatUnit":       fiat,
+                "price":          str(round(item["price"] * jitter, 4)),
+                "surplusAmount":  str(item["available"]),
+                "tradableQuantity": str(item["available"]),
+                "maxSingleTransAmount": str(round(item["available"] * item["price"] * 0.8)),
+                "minSingleTransAmount": str(round(item["price"] * 10)),
+                "payTypes":       [{"identifier": p, "tradeMethodName": p} for p in item["payment"]],
+            },
+            "advertiser": {
+                "nickName":          item["trader"],
+                "monthOrderCount":   item["trades"],
+                "monthFinishRate":   item["rating"] / 100,
+                "positiveRate":      item["rating"] / 100,
+                "userType":          "user",
+                "userGrade":         1 if item["trades"] > 500 else 0,
+                "isOnline":          True,
+            },
+        })
+    return result
+
+
+@app.route('/api/p2p/binance', methods=['GET'])
+@login_required
+def api_p2p_binance():
+    """
+    Proxy Binance P2P listings.
+    Falls back to realistic mock data when Binance is unreachable.
+
+    Query params:
+      asset      e.g. USDT (default)
+      fiat       e.g. NGN  (default)
+      tradeType  BUY | SELL  (default BUY)
+      rows       1-20  (default 10)
+    """
+    asset      = request.args.get("asset",      "USDT").upper()
+    fiat       = request.args.get("fiat",       "NGN").upper()
+    trade_type = request.args.get("tradeType",  "BUY").upper()
+    rows       = min(int(request.args.get("rows", 10)), 20)
+
+    payload = {
+        "fiat":             fiat,
+        "page":             1,
+        "rows":             rows,
+        "tradeType":        trade_type,
+        "asset":            asset,
+        "countries":        [],
+        "proMerchantAds":   False,
+        "shieldMerchantAds": False,
+        "publisherType":    None,
+        "payTypes":         [],
+        "classifies":       ["mass", "profession"],
+    }
+
+    try:
+        r = requests.post(
+            "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search",
+            json=payload,
+            headers={
+                "Content-Type":  "application/json",
+                "User-Agent":    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+                "Accept":        "application/json",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Origin":        "https://p2p.binance.com",
+                "Referer":       "https://p2p.binance.com/",
+            },
+            timeout=8,
+        )
+        if r.ok:
+            data = r.json()
+            if data.get("success") and data.get("data"):
+                return jsonify({"source": "binance", "data": data["data"], "total": data.get("total", 0)})
+    except Exception as e:
+        log.debug("Binance P2P fetch failed (%s), using fallback", e)
+
+    # Fallback
+    fallback = _build_p2p_fallback(asset, fiat, trade_type, rows)
+    return jsonify({"source": "mock", "data": fallback, "total": len(fallback)})
+
 
 @app.route('/about')
 def about():
