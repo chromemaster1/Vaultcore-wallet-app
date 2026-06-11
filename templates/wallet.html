@@ -48,6 +48,25 @@
 
 </section>
 
+<!-- ═══ Transaction History ═══ -->
+<div class="wallet-section" style="margin-top:28px">
+
+  <div class="wallet-section-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+    <h3 style="font-size:15px;font-weight:700;color:var(--text-1)">Transaction History</h3>
+    <!-- Filter tabs -->
+    <div style="display:flex;gap:6px">
+      <button class="tx-filter-btn active" data-filter="all"     onclick="setTxFilter('all')">All</button>
+      <button class="tx-filter-btn"        data-filter="receive" onclick="setTxFilter('receive')">Deposits</button>
+      <button class="tx-filter-btn"        data-filter="send"    onclick="setTxFilter('send')">Sends</button>
+      <button class="tx-filter-btn"        data-filter="withdraw"onclick="setTxFilter('withdraw')">Withdrawals</button>
+    </div>
+  </div>
+
+  <div id="txHistoryList">
+    <div class="loading-state" style="padding:20px;text-align:center;font-size:13px">Loading history…</div>
+  </div>
+
+</div>
 
 <script>
 let walletVisible = true;
@@ -151,6 +170,93 @@ function closeTrade(id) {
 }
 
 loadWallet();
+
+// ── Transaction History ──────────────────────────────────────────
+let _currentTxFilter = 'all';
+let _txData = [];
+
+async function loadTxHistory(filter = 'all') {
+  const container = document.getElementById('txHistoryList');
+  if (!container) return;
+  container.innerHTML = '<div class="loading-state" style="padding:20px;text-align:center;font-size:13px">Loading…</div>';
+
+  try {
+    const res  = await fetch(`/api/transactions?type=${filter}&limit=50`);
+    _txData    = await res.json();
+    renderTxHistory(_txData);
+  } catch(e) {
+    container.innerHTML = '<div class="loading-state" style="color:var(--danger);padding:20px;text-align:center">Could not load history.</div>';
+  }
+}
+
+function renderTxHistory(txs) {
+  const container = document.getElementById('txHistoryList');
+  if (!container) return;
+
+  if (!txs.length) {
+    container.innerHTML = '<div style="padding:24px;text-align:center;font-size:13px;color:var(--text-3)">No transactions yet.</div>';
+    return;
+  }
+
+  const ICONS = {
+    receive:  { icon: '↓', cls: 'tx-icon-receive'  },
+    send:     { icon: '↑', cls: 'tx-icon-send'      },
+    withdraw: { icon: '⇡', cls: 'tx-icon-withdraw'  },
+    trade:    { icon: '⇄', cls: 'tx-icon-trade'     },
+  };
+
+  const AMOUNT_CLS = {
+    receive:  'tx-amount-pos',
+    send:     'tx-amount-neg',
+    withdraw: 'tx-amount-neg',
+    trade:    'tx-amount-neu',
+  };
+
+  const SIGN = {
+    receive:  '+',
+    send:     '−',
+    withdraw: '−',
+    trade:    '',
+  };
+
+  container.innerHTML = txs.map(tx => {
+    const ic    = ICONS[tx.type] || { icon: '·', cls: 'tx-icon-trade' };
+    const amtCls = AMOUNT_CLS[tx.type] || 'tx-amount-neu';
+    const sign  = SIGN[tx.type] ?? '';
+    const sub   = tx.to_address
+      ? `To: ${tx.to_address.slice(0,12)}…`
+      : tx.notes
+        ? tx.notes.slice(0, 40)
+        : tx.tx_id.slice(0, 14) + '…';
+    const date  = new Date(tx.created_at).toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+    const statusPill = `<span class="tx-status-pill pill-${tx.status}">${tx.status}</span>`;
+
+    return `
+      <div class="tx-history-row">
+        <div class="tx-icon ${ic.cls}">${ic.icon}</div>
+        <div class="tx-row-info">
+          <div class="tx-row-type">${tx.type}</div>
+          <div class="tx-row-sub">${sub} · ${date}</div>
+        </div>
+        <div class="tx-row-right">
+          <div class="tx-row-amount ${amtCls}">${sign}${parseFloat(tx.amount).toFixed(6)} ${tx.symbol}</div>
+          ${statusPill}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function setTxFilter(filter) {
+  _currentTxFilter = filter;
+  document.querySelectorAll('.tx-filter-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.filter === filter);
+  });
+  loadTxHistory(filter);
+}
+
+// Auto-load on page ready
+loadTxHistory('all');
+
 </script>
 
 {% endblock %}

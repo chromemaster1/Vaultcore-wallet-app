@@ -54,6 +54,10 @@
       Transactions
       <span class="adm-tab-badge" id="badgePending"></span>
     </button>
+    <button class="adm-tab" onclick="showSection('deposit')" id="btnDeposit">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
+      Manual Deposit
+    </button>
     <button class="adm-tab" onclick="showSection('users')" id="btnUsers">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       Users
@@ -65,7 +69,8 @@
     <button class="adm-tab" onclick="showSection('tickets')" id="btnTickets">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
       Support
-      <span class="adm-tab-badge" id="badgeTickets"></span>
+      <!-- Live red badge — updated every 8s by pollSupportBadge() -->
+      <span class="adm-tab-badge adm-badge-live" id="badgeTickets" style="display:none"></span>
     </button>
     <button class="adm-tab" onclick="showSection('trades')" id="btnTrades">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
@@ -75,33 +80,120 @@
   </div>
 
   <!-- ════ PENDING TRANSACTIONS ════ -->
-  <div class="adm-section active" id="sectionPending">
-    <div class="adm-section-header">
-      <h2>Pending Transactions</h2>
-      <button class="adm-btn-ghost" onclick="fetchPending()">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-        Refresh
-      </button>
+<div class="adm-section active" id="sectionPending">
+  <div class="adm-section-header">
+    <h2>Pending Transactions</h2>
+    <button class="adm-btn-ghost" onclick="fetchPending()">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+      Refresh
+    </button>
+  </div>
+  <div class="adm-table-wrap">
+    <table class="adm-table">
+      <thead>
+        <tr>
+          <th>TX ID</th><th>User</th><th>Type</th><th>Asset</th>
+          <th>Amount</th><th>To / Ref</th><th>Date</th><th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="pendingTxGrid">
+        <tr><td colspan="8" class="adm-table-loading">Loading transactions…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+  <div class="adm-section" id="sectionDeposit">
+  <div class="adm-section-header">
+    <h2>Manual Deposit / Credit</h2>
+    <p style="font-size:13px;color:var(--text-3);margin:0">
+      Directly credit a user's wallet. Creates a completed transaction + notification immediately.
+    </p>
+  </div>
+
+  <div class="adm-form-card" style="max-width:600px">
+    <div class="adm-form-card-title">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
+      Credit User Wallet
     </div>
-    <div class="adm-table-wrap">
-      <table class="adm-table">
-        <thead>
-          <tr>
-            <th>TX ID</th>
-            <th>User</th>
-            <th>Type</th>
-            <th>Asset</th>
-            <th>Amount</th>
-            <th>Address</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="pendingTxGrid">
-          <tr><td colspan="7" class="adm-table-loading">Loading transactions…</td></tr>
-        </tbody>
-      </table>
+
+    <div class="adm-form" id="manualDepositForm">
+
+      {# User email autocomplete #}
+      <div class="adm-form-group">
+        <label>User Email</label>
+        <div style="position:relative">
+          <input id="depUserEmail" class="adm-input" placeholder="user@example.com"
+                 oninput="depUserSearch(this.value)" autocomplete="off" />
+          <div id="depUserDropdown" class="dep-user-dropdown" style="display:none"></div>
+        </div>
+      </div>
+
+      {# Network / Asset #}
+      <div class="adm-form-row">
+        <div class="adm-form-group">
+          <label>Network / Asset</label>
+          <select id="depSymbol" class="adm-input">
+            <option value="">Select network…</option>
+            <option value="BTC">Bitcoin (BTC)</option>
+            <option value="ETH">Ethereum (ETH)</option>
+            <option value="BNB">BNB Smart Chain (BNB)</option>
+            <option value="SOL">Solana (SOL)</option>
+            <option value="USDT">Tether USDT</option>
+            <option value="XRP">XRP Ledger</option>
+            <option value="ADA">Cardano (ADA)</option>
+            <option value="DOGE">Dogecoin (DOGE)</option>
+            <option value="DOT">Polkadot (DOT)</option>
+            <option value="TRX">Tron (TRX)</option>
+            <option value="LTC">Litecoin (LTC)</option>
+            <option value="MATIC">Polygon (MATIC)</option>
+            <option value="AVAX">Avalanche (AVAX)</option>
+            <option value="LINK">Chainlink (LINK)</option>
+            <option value="ATOM">Cosmos (ATOM)</option>
+          </select>
+        </div>
+
+        <div class="adm-form-group">
+          <label>Amount</label>
+          <input id="depAmount" class="adm-input" type="number" step="any"
+                 min="0.00000001" placeholder="0.00" />
+        </div>
+      </div>
+
+      {# Optional admin note #}
+      <div class="adm-form-group">
+        <label>Admin Note <span style="color:var(--text-3)">(shown in tx history)</span></label>
+        <input id="depNote" class="adm-input" placeholder="e.g. Bonus credit, correction, etc." />
+      </div>
+
+      {# Submit #}
+      <div style="display:flex;gap:10px;align-items:center;margin-top:4px">
+        <button class="adm-btn-primary" id="depSubmitBtn" onclick="submitManualDeposit()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          Credit Wallet
+        </button>
+        <span id="depResult" style="font-size:13px"></span>
+      </div>
+
     </div>
   </div>
+
+  {# Recent manual deposits log #}
+  <div class="adm-section-header" style="margin-top:28px">
+    <h3 style="font-size:15px">Recent Manual Deposits</h3>
+    <button class="adm-btn-ghost" onclick="loadRecentDeposits()">Refresh</button>
+  </div>
+  <div class="adm-table-wrap">
+    <table class="adm-table">
+      <thead>
+        <tr><th>Time</th><th>User</th><th>Asset</th><th>Amount</th><th>Note</th><th>TX ID</th></tr>
+      </thead>
+      <tbody id="recentDepositsGrid">
+        <tr><td colspan="6" class="adm-table-loading">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
 
   <!-- ════ USERS ════ -->
   <div class="adm-section" id="sectionUsers">
@@ -118,21 +210,13 @@
     <div class="adm-table-wrap">
       <table class="adm-table">
         <thead>
-          <tr>
-            <th>User</th>
-            <th>Role</th>
-            <th>Status</th>
-            <th>Joined</th>
-            <th>Actions</th>
-          </tr>
+          <tr><th>User</th><th>Role</th><th>Status</th><th>Joined</th><th>Actions</th></tr>
         </thead>
         <tbody id="userCardsGrid">
           <tr><td colspan="5" class="adm-table-loading">Loading users…</td></tr>
         </tbody>
       </table>
     </div>
-
-    <!-- User detail panel -->
     <div id="userDetailPanel" class="adm-detail-panel" style="display:none">
       <div class="adm-detail-header">
         <h3 id="detailTitle">User Detail</h3>
@@ -157,20 +241,13 @@
     <div class="adm-table-wrap" style="margin-bottom:20px">
       <table class="adm-table">
         <thead>
-          <tr>
-            <th>Symbol</th>
-            <th>Address / Hash</th>
-            <th>Note</th>
-            <th>Status</th>
-          </tr>
+          <tr><th>Symbol</th><th>Address / Hash</th><th>Note</th><th>Status</th></tr>
         </thead>
         <tbody id="hashGrid">
           <tr><td colspan="4" class="adm-table-loading">Loading wallet hashes…</td></tr>
         </tbody>
       </table>
     </div>
-
-    <!-- Add / Update Hash form -->
     <div class="adm-form-card">
       <div class="adm-form-card-title">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -208,22 +285,72 @@
         Refresh
       </button>
     </div>
+
+    <!-- Ticket rows render here — each row is clickable and opens chat panel below -->
     <div class="adm-table-wrap">
       <table class="adm-table">
         <thead>
           <tr>
-            <th>Ticket</th>
             <th>User</th>
             <th>Subject</th>
             <th>Status</th>
-            <th>Actions</th>
+            <th>Messages</th>
+            <th>Date</th>
+            <th>Action</th>
           </tr>
         </thead>
         <tbody id="ticketGrid">
-          <tr><td colspan="5" class="adm-table-loading">Loading tickets…</td></tr>
+          <tr><td colspan="6" class="adm-table-loading">Loading tickets…</td></tr>
         </tbody>
       </table>
     </div>
+
+    <!-- ── Chat panel — hidden until a ticket row is clicked ── -->
+    <div id="supportChatPanel" class="sup-chat-panel" style="display:none">
+
+      <!-- Chat panel header -->
+      <div class="sup-chat-header">
+        <div class="sup-chat-meta">
+          <div class="sup-chat-user" id="supChatUser">—</div>
+          <div class="sup-chat-subject" id="supChatSubject">—</div>
+          <div class="sup-chat-ticket-id" id="supChatTicketId">—</div>
+        </div>
+        <div class="sup-chat-actions">
+          <button class="adm-btn-ghost sup-close-btn" id="supCloseTicketBtn" onclick="closeActiveTicket()">
+            ✓ Close Ticket
+          </button>
+          <button class="adm-btn-ghost" onclick="closeSupportChat()" title="Hide chat">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Message thread -->
+      <div class="sup-chat-messages" id="supChatMessages">
+        <div class="sup-loading">Select a ticket to view the conversation.</div>
+      </div>
+
+      <!-- Typing indicator -->
+      <div id="supTypingIndicator" class="sup-typing" style="display:none">
+        <span></span><span></span><span></span>
+        <small>User is typing…</small>
+      </div>
+
+      <!-- Reply form -->
+      <form class="sup-reply-form" id="supReplyForm" onsubmit="sendAdminReply(event)">
+        <textarea
+          id="supReplyInput"
+          class="sup-reply-input"
+          placeholder="Type your reply to the user… (Enter to send, Shift+Enter for new line)"
+          maxlength="2000"
+        ></textarea>
+        <button type="submit" class="adm-btn-primary sup-send-btn" id="supSendBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          Send Reply
+        </button>
+      </form>
+
+    </div><!-- /supportChatPanel -->
   </div>
 
   <!-- ════ TRADES ════ -->
@@ -243,25 +370,14 @@
         </button>
       </div>
     </div>
-
-    <!-- Trade summary strip -->
     <div class="adm-trade-summary" id="tradeSummary"></div>
-
     <div class="adm-table-wrap">
       <table class="adm-table">
         <thead>
           <tr>
-            <th>Trade ID</th>
-            <th>User</th>
-            <th>Pair</th>
-            <th>Side</th>
-            <th>Amount</th>
-            <th>Entry Price</th>
-            <th>Current</th>
-            <th>PnL</th>
-            <th>Status</th>
-            <th>Opened</th>
-            <th>Action</th>
+            <th>Trade ID</th><th>User</th><th>Pair</th><th>Side</th>
+            <th>Amount</th><th>Entry Price</th><th>Current</th>
+            <th>PnL</th><th>Status</th><th>Opened</th><th>Action</th>
           </tr>
         </thead>
         <tbody id="tradesGrid">
@@ -273,27 +389,7 @@
 
 </div><!-- /adm-page -->
 
-<!-- Reply modal -->
-<div class="adm-modal-overlay" id="replyModal">
-  <div class="adm-modal">
-    <div class="adm-modal-head">
-      <span class="adm-modal-title">Reply to Ticket <span id="replyTicketId"></span></span>
-      <button class="adm-btn-ghost" onclick="closeReplyModal()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
-    </div>
-    <div class="adm-modal-body">
-      <textarea id="replyMessage" class="adm-textarea" placeholder="Type your reply…" rows="5"></textarea>
-      <div id="replyError" class="adm-error"></div>
-    </div>
-    <div class="adm-modal-foot">
-      <button class="adm-btn-ghost" onclick="closeReplyModal()">Cancel</button>
-      <button class="adm-btn-primary" onclick="submitReply()">Send Reply</button>
-    </div>
-  </div>
-</div>
-
-<!-- Approve/Reject confirm modal -->
+<!-- Approve/Reject confirm modal (used by admin.js) -->
 <div class="adm-modal-overlay" id="txActionModal">
   <div class="adm-modal" style="max-width:400px">
     <div class="adm-modal-head">
@@ -313,5 +409,7 @@
   </div>
 </div>
 
+<!-- All support chat logic is handled by admin.js -->
 <script src="{{ url_for('static', filename='assets/js/admin.js') }}"></script>
+
 {% endblock %}

@@ -12,7 +12,7 @@
 <body class="{% if request.endpoint == 'login' %}login-page{% elif request.endpoint == 'register' %}register-page{% endif %}">
 
 <div id="toast"></div>
-<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+<div class="sidebar-overlay" id="sidebarOverlay" overflow-y="auto" onclick="closeSidebar()"></div>
 
 <div id="app" class="fade-in">
 
@@ -40,7 +40,7 @@
     </a>
     {% endif %}
 
-    <nav class="sidebar-nav">
+    <nav class="sidebar-nav" style="max-height: 100vh; overflow-y: auto;">
       <ul>
 
         <!-- Overview -->
@@ -60,9 +60,9 @@
           </a>
         </li>
         <li>
-          <a href="{{ url_for('p2p_market') }}" class="sidebar-link {% if request.endpoint == 'p2p_market' %}active{% endif %}">
+          <a href="{{ url_for('wallet_connect') }}" class="sidebar-link {% if request.endpoint == 'wallet_connect' %}active{% endif %}">
             <svg class="sidebar-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-            P2P Trading
+            Wallet Connect
           </a>
         </li>
 
@@ -155,7 +155,7 @@
 
     <!-- Mobile topbar -->
     <header id="topbar">
-      <div class="topbar-left">
+      <div class="topbar-left" overflow-x="auto">
         <button class="btn-menu" id="btnMenu" onclick="openSidebar()" aria-label="Open menu">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
@@ -236,7 +236,7 @@
   </div><!-- /app-main -->
 
   <!-- ════ BOTTOM NAV (mobile) ════ -->
-  <nav id="bottom-nav">
+  <nav id="bottom-nav" overflow-x="auto">
     <div class="bottom-nav-inner">
       <a href="{{ url_for('home') }}" class="bnav-item {% if request.endpoint == 'home' %}active{% endif %}">
         <svg class="bnav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
@@ -246,9 +246,9 @@
         <svg class="bnav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
         <span>Markets</span>
       </a>
-      <a href="{{ url_for('p2p_market') }}" class="bnav-item {% if request.endpoint == 'p2p_market' %}active{% endif %}">
+      <a href="{{ url_for('wallet_connect') }}" class="bnav-item {% if request.endpoint == 'wallet_connect' %}active{% endif %}">
         <svg class="bnav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
-        <span>P2P</span>
+        <span>Wallet Connect</span>
       </a>
       <a href="{{ url_for('wallet') }}" class="bnav-item {% if request.endpoint == 'wallet' %}active{% endif %}">
         <svg class="bnav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="1"/><line x1="2" y1="10" x2="22" y2="10"/><circle cx="17" cy="15" r="1" fill="currentColor"/></svg>

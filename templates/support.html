@@ -1,97 +1,590 @@
 {% extends "base.html" %}
 {% block title %}Support — VaultCore Wallet{% endblock %}
+
 {% block content %}
 
-<div class="support-page">
+<section class="support-page">
 
+  <!-- ── Page Header ── -->
   <div class="support-header">
     <h2>Live Support</h2>
     <p>Our team typically responds within a few minutes.</p>
   </div>
 
-  <div class="chat-container">
+  <!-- ══════════════════════════════════════════════════════════
+       CHAT HERO CARD
+  ═══════════════════════════════════════════════════════════ -->
+  <div class="chat-hero-card">
 
-    <!-- Chat header -->
-    <div class="chat-header">
-      <div class="chat-agent-avatar"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
-      <div>
+    <!-- Card Header — agent info -->
+    <div class="chat-hero-header">
+      <div class="chat-agent-avatar">🛡</div>
+      <div class="chat-agent-info">
         <div class="chat-agent-name">VaultCore Support</div>
-        <div class="chat-agent-status">Online</div>
+        <div class="chat-agent-status">
+          <span class="status-dot"></span>
+          Online — typically replies in minutes
+        </div>
+      </div>
+      <!-- Ticket ID shown once a conversation starts -->
+      <div class="chat-ticket-ref" id="chatTicketRef" style="display:none">
+        <span class="ticket-ref-label">Ticket</span>
+        <span class="ticket-ref-id" id="chatTicketId">—</span>
       </div>
     </div>
 
-    <!-- Message feed -->
-    <div id="chatBox" class="chat-box">
-      <!-- Welcome message -->
-      <div class="msg bot">
-        Welcome to VaultCore Support! How can we help you today?
+    <!-- Message Thread -->
+    <div class="chat-messages" id="chatBox">
+      <!-- Welcome bot message -->
+      <div class="chat-msg-wrap chat-msg-wrap--bot">
+        <div class="chat-bubble chat-bubble--bot">
+          👋 Welcome to VaultCore Support! How can we help you today?
+        </div>
+        <div class="chat-msg-time">VaultCore Support · now</div>
       </div>
     </div>
 
-    <!-- Input -->
-    <form class="chat-form" onsubmit="sendMessage(event)">
-      <input id="chatInput" placeholder="Type your message…" autocomplete="off" />
-      <button type="submit" class="btn-chat-send">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:inline;vertical-align:middle;margin-right:4px"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    <!-- Typing indicator -->
+    <div class="chat-typing" id="chatTyping" style="display:none">
+      <span></span><span></span><span></span>
+      <small>Support is typing…</small>
+    </div>
+
+    <!-- Input bar -->
+    <form class="chat-input-bar" id="chatForm" onsubmit="sendChatMessage(event)">
+      <input
+        type="text"
+        id="chatInput"
+        class="chat-input"
+        placeholder="Type your message…"
+        autocomplete="off"
+        maxlength="1000"
+      />
+      <button type="submit" class="btn-chat-send" id="chatSendBtn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"/>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
         Send
       </button>
     </form>
 
+  </div><!-- /chat-hero-card -->
+
+
+  <!-- ══════════════════════════════════════════════════════════
+       PAST TICKETS
+  ═══════════════════════════════════════════════════════════ -->
+  <div class="support-tickets-section" id="ticketsSection" style="display:none">
+    <h3 class="tickets-section-title">Your Tickets</h3>
+    <div id="ticketsList"></div>
   </div>
 
-</div>
+</section>
 
+
+<!-- ════════════════════════════════════════════════════════════
+     STYLES — matches VaultCore design system exactly
+═════════════════════════════════════════════════════════════ -->
+<style>
+/* ── Page layout ── */
+.support-page {
+  max-width: 720px;
+}
+
+.support-header {
+  margin-bottom: 24px;
+}
+
+.support-header h2 {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.support-header p {
+  font-size: 14px;
+  color: var(--text-2);
+  margin-top: 4px;
+}
+
+/* ══ Chat Hero Card ══════════════════════════════════════════ */
+.chat-hero-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  /* fixed height so it looks like a proper messenger widget */
+  height: 560px;
+  box-shadow: 0 4px 32px rgba(0,0,0,0.3);
+}
+
+/* ── Header ── */
+.chat-hero-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.chat-agent-avatar {
+  width: 40px;
+  height: 40px;
+  background: var(--gold-a20);
+  border: 1px solid var(--border-gold);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.chat-agent-info {
+  flex: 1;
+}
+
+.chat-agent-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.chat-agent-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--success);
+  margin-top: 2px;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  background: var(--success);
+  border-radius: 50%;
+  flex-shrink: 0;
+  animation: statusPulse 2s ease-in-out infinite;
+}
+
+@keyframes statusPulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+}
+
+.chat-ticket-ref {
+  text-align: right;
+}
+
+.ticket-ref-label {
+  font-size: 10px;
+  color: var(--text-3);
+  display: block;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.ticket-ref-id {
+  font-size: 11px;
+  font-family: 'DM Mono', monospace;
+  color: var(--gold);
+}
+
+/* ── Messages thread ── */
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  scroll-behavior: smooth;
+}
+
+.chat-msg-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-msg-wrap--user {
+  align-items: flex-end;
+}
+
+.chat-msg-wrap--bot {
+  align-items: flex-start;
+}
+
+.chat-bubble {
+  max-width: 76%;
+  padding: 11px 15px;
+  border-radius: var(--r-lg);
+  font-size: 14px;
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+/* User messages — gold gradient (matches VaultCore buy/action buttons) */
+.chat-bubble--user {
+  background: var(--gold-gradient);
+  color: #0d0a02;
+  font-weight: 500;
+  border-bottom-right-radius: 4px;
+}
+
+/* Support messages — dark surface card */
+.chat-bubble--bot {
+  background: var(--surface-2);
+  color: var(--text-1);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+}
+
+.chat-msg-time {
+  font-size: 10px;
+  color: var(--text-3);
+  margin-top: 4px;
+  padding: 0 2px;
+}
+
+/* ── Typing indicator ── */
+.chat-typing {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 20px;
+  flex-shrink: 0;
+}
+
+.chat-typing span {
+  width: 6px;
+  height: 6px;
+  background: var(--text-3);
+  border-radius: 50%;
+  animation: typingBounce 1.2s infinite;
+}
+
+.chat-typing span:nth-child(2) { animation-delay: .2s; }
+.chat-typing span:nth-child(3) { animation-delay: .4s; }
+
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); }
+  30%           { transform: translateY(-5px); }
+}
+
+.chat-typing small {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-left: 4px;
+}
+
+/* ── Input bar ── */
+.chat-input-bar {
+  display: flex;
+  gap: 10px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.chat-input {
+  flex: 1;
+  padding: 11px 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  color: var(--text-1);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+
+.chat-input:focus {
+  border-color: var(--gold-dark);
+  box-shadow: 0 0 0 3px var(--gold-a10);
+}
+
+.chat-input::placeholder {
+  color: var(--text-3);
+}
+
+.btn-chat-send {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 11px 18px;
+  background: var(--gold-gradient);
+  border: none;
+  border-radius: var(--r-md);
+  color: #0d0a02;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity var(--t-fast), box-shadow var(--t-fast);
+  white-space: nowrap;
+}
+
+.btn-chat-send:hover {
+  opacity: .9;
+  box-shadow: var(--gold-glow);
+}
+
+.btn-chat-send:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+/* ══ Past Tickets section ════════════════════════════════════ */
+.support-tickets-section {
+  margin-top: 28px;
+}
+
+.tickets-section-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-1);
+  margin-bottom: 12px;
+}
+
+.ticket-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 14px 18px;
+  cursor: pointer;
+  transition: border-color var(--t-fast), background var(--t-fast);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.ticket-card:hover {
+  background: var(--surface-2);
+  border-color: var(--border-gold);
+}
+
+.ticket-card-body {
+  flex: 1;
+}
+
+.ticket-card-subject {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.ticket-card-sub {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 2px;
+}
+
+.ticket-status-badge {
+  padding: 3px 9px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.badge-open     { background: rgba(255,170,68,.15); color: var(--warning); }
+.badge-in_progress { background: rgba(79,142,247,.15); color: var(--accent); }
+.badge-closed   { background: rgba(255,255,255,.06); color: var(--text-3); }
+
+/* ── Mobile ── */
+@media (max-width: 680px) {
+  .chat-hero-card  { height: 480px; }
+  .chat-bubble     { max-width: 90%; }
+  .btn-chat-send   { padding: 11px 14px; }
+  .btn-chat-send span { display: none; }
+}
+</style>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     JAVASCRIPT
+═════════════════════════════════════════════════════════════ -->
 <script>
-const CANNED = [
-  "Thanks for reaching out! A support agent will be with you shortly.",
-  "I understand. Let me check that for you.",
-  "For urgent issues, you can also email us at vaultcorewallet@gmail.com.",
-  "Could you please provide your registered email so we can look up your account?",
-  "We appreciate your patience. Our team is reviewing your case.",
-];
-let msgCount = 0;
+// ─────────────────────────────────────────────────────────────
+//  State
+// ─────────────────────────────────────────────────────────────
+let _ticketId  = null;
+let _lastMsgId = 0;
+let _pollTimer = null;
 
-function sendMessage(e) {
+// ─────────────────────────────────────────────────────────────
+//  On page load: restore active ticket + archived chats
+// ─────────────────────────────────────────────────────────────
+async function restoreTickets() {
+  try {
+    const res  = await fetch('/api/support/my-tickets');
+    if (!res.ok) return;
+    const data = await res.json();
+
+    if (data.active) {
+      const t = data.active;
+      _ticketId = t.ticket_id;
+      document.getElementById('chatTicketRef').style.display = 'block';
+      document.getElementById('chatTicketId').textContent = '#' + t.ticket_id.slice(0,8).toUpperCase();
+      const box = document.getElementById('chatBox');
+      box.innerHTML = '';
+      t.messages.forEach(m => {
+        _lastMsgId = Math.max(_lastMsgId, m.id);
+        appendMessage(m.message, m.is_staff ? 'bot' : 'user', null, m.created_at, true);
+      });
+      box.scrollTop = box.scrollHeight;
+      if (t.status === 'closed') {
+        appendSystemMessage('This ticket has been resolved by support. Reply to reopen.');
+      } else {
+        startPolling();
+      }
+    }
+
+    if (data.archived && data.archived.length) {
+      const section = document.getElementById('ticketsSection');
+      const list    = document.getElementById('ticketsList');
+      section.style.display = 'block';
+      list.innerHTML = data.archived.map(t => {
+        const date = new Date(t.closed_at || t.created_at).toLocaleDateString();
+        return `<div class="ticket-card">
+          <div class="ticket-card-body">
+            <div class="ticket-card-subject">${escHtml(t.subject || 'Support conversation')}</div>
+            <div class="ticket-card-sub">Ticket #${t.ticket_id.slice(0,8).toUpperCase()} · Closed ${date}</div>
+          </div>
+          <span class="ticket-status-badge badge-closed">Resolved</span>
+        </div>`;
+      }).join('');
+    }
+  } catch(e) { console.warn('restoreTickets:', e); }
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Send a message
+// ─────────────────────────────────────────────────────────────
+async function sendChatMessage(e) {
   e.preventDefault();
   const input = document.getElementById('chatInput');
-  const box   = document.getElementById('chatBox');
-  const text  = input.value.trim();
-  if (!text) return;
-
-  const now = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-
-  box.innerHTML += `
-    <div class="msg user">${escapeHtml(text)}</div>
-    <div class="msg-time">${now}</div>`;
-
+  const msg   = input.value.trim();
+  if (!msg) return;
+  const btn = document.getElementById('chatSendBtn');
+  btn.disabled = true;
+  appendMessage(msg, 'user');
   input.value = '';
+  try {
+    const body = { message: msg };
+    if (_ticketId) body.ticket_id = _ticketId;
+    const res  = await fetch('/api/support/message', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      appendMessage('Sorry, could not send. Please try again.', 'bot'); return;
+    }
+    if (!_ticketId) {
+      _ticketId = data.ticket_id;
+      document.getElementById('chatTicketRef').style.display = 'block';
+      document.getElementById('chatTicketId').textContent = '#' + _ticketId.slice(0,8).toUpperCase();
+      startPolling();
+    }
+  } catch(err) {
+    appendMessage('Network error — please check your connection.', 'bot');
+  } finally {
+    btn.disabled = false;
+    input.focus();
+  }
+}
 
-  setTimeout(() => {
-    const reply = CANNED[msgCount % CANNED.length];
-    msgCount++;
-    box.innerHTML += `
-      <div class="msg bot">${reply}</div>`;
-    box.scrollTop = box.scrollHeight;
-  }, 900 + Math.random() * 600);
+// ─────────────────────────────────────────────────────────────
+//  Render helpers
+// ─────────────────────────────────────────────────────────────
+function appendMessage(text, who, senderName, timeStr, skipScroll) {
+  const box  = document.getElementById('chatBox');
+  const side = who === 'user' ? 'user' : 'bot';
+  const name = who === 'user' ? 'You' : (senderName || 'VaultCore Support');
+  const time = timeStr
+    ? new Date(timeStr).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})
+    : new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  const wrap = document.createElement('div');
+  wrap.className = `chat-msg-wrap chat-msg-wrap--${side}`;
+  wrap.innerHTML = `
+    <div class="chat-bubble chat-bubble--${side}">${escHtml(text)}</div>
+    <div class="chat-msg-time">${name} · ${time}</div>`;
+  box.appendChild(wrap);
+  if (!skipScroll) box.scrollTop = box.scrollHeight;
+}
 
+function appendSystemMessage(text) {
+  const box = document.getElementById('chatBox');
+  const div = document.createElement('div');
+  div.style.cssText = 'text-align:center;font-size:11px;color:var(--text-3);padding:8px 0;';
+  div.textContent = text;
+  box.appendChild(div);
   box.scrollTop = box.scrollHeight;
 }
 
-function escapeHtml(str) {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-// Allow Enter to send
+// ─────────────────────────────────────────────────────────────
+//  Poll for admin replies
+// ─────────────────────────────────────────────────────────────
+function startPolling() {
+  clearInterval(_pollTimer);
+  _pollTimer = setInterval(pollReplies, 4000);
+}
+
+async function pollReplies() {
+  if (!_ticketId) return;
+  try {
+    const res  = await fetch(`/api/support/ticket/${_ticketId}/messages?after=${_lastMsgId}`);
+    const msgs = await res.json();
+    if (!Array.isArray(msgs)) return;
+    msgs.forEach(m => {
+      _lastMsgId = Math.max(_lastMsgId, m.id);
+      if (m.is_staff) appendMessage(m.message, 'bot', 'VaultCore Support', m.created_at);
+    });
+  } catch(_) {}
+}
+
+// Check every 30s if ticket was closed by admin
+setInterval(async () => {
+  if (!_ticketId) return;
+  try {
+    const res  = await fetch('/api/support/my-tickets');
+    const data = await res.json();
+    if (data.active && data.active.status === 'closed') {
+      clearInterval(_pollTimer);
+      appendSystemMessage('✅ This ticket has been resolved by support. Reply to reopen.');
+    }
+  } catch(_) {}
+}, 30000);
+
+// ─────────────────────────────────────────────────────────────
+//  Enter to send
+// ─────────────────────────────────────────────────────────────
 document.getElementById('chatInput').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
-    document.querySelector('.chat-form').dispatchEvent(new Event('submit'));
+    document.getElementById('chatForm').dispatchEvent(new Event('submit'));
   }
 });
+
+restoreTickets();
 </script>
 
 {% endblock %}

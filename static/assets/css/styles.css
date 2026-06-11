@@ -1930,6 +1930,12 @@ body.register-page #main {
   border-radius: var(--r-md);
   padding: 4px;
   width: fit-content;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  overflow-y: auto;
+  overflow-x: hidden;
+
 }
 
 .market-tab {
@@ -4733,351 +4739,249 @@ select option {
 @keyframes ticker-slide { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
 
 /* ════════════════════════════════════════
-   P2P MARKET PAGE — FULLY RESPONSIVE
+   Wallet Connect PAGE — FULLY RESPONSIVE
 ════════════════════════════════════════ */
-.p2p-page { max-width: 1040px; }
-.p2p-header { margin-bottom: 16px; }
-.p2p-header h2 { font-size: 22px; font-weight: 700; color: var(--text-1); }
-.p2p-header p  { font-size: 13px; color: var(--text-2); margin-top: 3px; }
 
-/* ── Controls block ── */
-.p2p-controls {
-  background: var(--surface-1); border: 1px solid var(--border);
-  border-radius: var(--r-lg) var(--r-lg) 0 0; overflow: hidden;
-}
+.wc-page { max-width: 800px; }
 
-/* Top row: side tabs + coin tabs */
-.p2p-top-row {
-  display: flex; align-items: stretch;
-  border-bottom: 1px solid var(--border);
-  overflow-x: auto; scrollbar-width: none;
-}
-.p2p-top-row::-webkit-scrollbar { display: none; }
+.wc-header { margin-bottom: 24px; }
+.wc-title  { font-size: 26px; font-weight: 700; color: var(--text-1); }
+.wc-sub    { font-size: 14px; color: var(--text-2); margin-top: 4px; }
 
-.p2p-side-tabs { display: flex; flex-shrink: 0; border-right: 1px solid var(--border); }
-.p2p-side-tab {
-  padding: 12px 24px; background: transparent; border: none;
-  font-size: 14px; font-weight: 700; font-family: inherit;
-  color: var(--text-3); cursor: pointer; white-space: nowrap;
-  position: relative; transition: color var(--t-fast);
-}
-.p2p-side-tab:hover { color: var(--text-1); }
-.p2p-side-tab.active.buy  { color: var(--success); }
-.p2p-side-tab.active.sell { color: var(--danger); }
-.p2p-side-tab.active::after {
-  content: ''; position: absolute; bottom: 0; left: 0; right: 0;
-  height: 2px; background: currentColor;
-}
-
-.p2p-coin-tabs { display: flex; overflow-x: auto; scrollbar-width: none; }
-.p2p-coin-tabs::-webkit-scrollbar { display: none; }
-.p2p-coin-tab {
-  display: flex; align-items: center; gap: 6px;
-  padding: 12px 16px; background: transparent; border: none;
-  font-size: 13px; font-weight: 600; font-family: inherit;
-  color: var(--text-3); cursor: pointer; white-space: nowrap;
-  border-bottom: 2px solid transparent;
-  transition: color var(--t-fast), border-color var(--t-fast);
-}
-.p2p-coin-tab:hover { color: var(--text-1); }
-.p2p-coin-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
-
-/* Filter bar */
-.p2p-filter-bar {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  padding: 10px 14px; border-bottom: 1px solid var(--border);
-  background: var(--surface-2);
-}
-.p2p-filter-input {
-  padding: 7px 12px; background: var(--surface-1); border: 1px solid var(--border);
-  border-radius: var(--r-sm); color: var(--text-1); font-size: 13px; font-family: inherit;
-  outline: none; min-width: 0; flex: 1; max-width: 180px;
-  transition: border-color var(--t-fast);
-}
-.p2p-filter-input:focus { border-color: var(--gold-dark); }
-.p2p-filter-input::placeholder { color: var(--text-3); }
-.p2p-filter-select {
-  padding: 7px 12px; background: var(--surface-1); border: 1px solid var(--border);
-  border-radius: var(--r-sm); color: var(--text-1); font-size: 13px; font-family: inherit;
-  outline: none; appearance: none; cursor: pointer; min-width: 0; flex: 1; max-width: 180px;
-  transition: border-color var(--t-fast);
-}
-.p2p-filter-select:focus { border-color: var(--gold-dark); }
-.p2p-filter-actions { display: flex; gap: 8px; margin-left: auto; flex-shrink: 0; }
-.btn-refresh-p2p {
-  display: flex; align-items: center; gap: 5px;
-  padding: 7px 12px; background: var(--surface-1); border: 1px solid var(--border);
-  border-radius: var(--r-sm); color: var(--text-2); font-size: 12px; font-weight: 600;
-  font-family: inherit; cursor: pointer;
-  transition: border-color var(--t-fast), color var(--t-fast);
-}
-.btn-refresh-p2p:hover { border-color: var(--border-gold); color: var(--gold); }
-.btn-create-offer {
-  padding: 7px 14px; background: var(--gold-gradient); border: none;
-  border-radius: var(--r-sm); color: #0d0a02; font-size: 12px; font-weight: 700;
-  font-family: inherit; cursor: pointer; white-space: nowrap;
-  transition: opacity var(--t-fast), box-shadow var(--t-fast);
-}
-.btn-create-offer:hover { opacity: .9; box-shadow: var(--gold-glow); }
-
-/* ── Desktop column headers ── */
-.p2p-list-header {
+/* Wallet type picker grid */
+.wc-grid {
   display: grid;
-  grid-template-columns: 2fr 1.4fr 1.4fr 1.4fr 1.6fr 140px;
-  gap: 0; padding: 9px 16px;
-  background: var(--surface-2); border: 1px solid var(--border);
-  border-top: none; border-bottom: none;
-  font-size: 11px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: .06em; color: var(--text-3);
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 32px;
 }
 
-/* ── Offer list ── */
-.p2p-list {
-  border: 1px solid var(--border); border-top: none;
-  border-radius: 0 0 var(--r-lg) var(--r-lg); overflow: hidden;
+.wc-wallet-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  padding: 20px 16px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+  transition: border-color .15s, transform .15s, box-shadow .15s;
 }
 
-/* ── Each offer row ── */
-.p2p-offer-row {
-  display: grid;
-  grid-template-columns: 2fr 1.4fr 1.4fr 1.4fr 1.6fr 140px;
-  gap: 0; align-items: center;
-  padding: 14px 16px; border-bottom: 1px solid var(--border);
-  transition: background var(--t-fast);
+.wc-wallet-card:hover {
+  border-color: var(--gold-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,.2);
 }
-.p2p-offer-row:last-child { border-bottom: none; }
-.p2p-offer-row:hover { background: var(--surface-2); }
 
-/* Columns */
-.p2p-col-advertiser { display: flex; align-items: center; gap: 10px; padding-right: 12px; }
-.p2p-col-price, .p2p-col-avail, .p2p-col-limits, .p2p-col-payment { padding-right: 10px; }
-.p2p-col-action { display: flex; justify-content: flex-end; }
-
-/* Mobile label (hidden on desktop) */
-.p2p-mob-label { display: none; }
-
-/* Trader info */
-.p2p-avatar {
-  width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0;
+.wc-wallet-icon {
+  width: 52px; height: 52px;
+  border-radius: 14px;
+  border: 1px solid transparent;
   display: flex; align-items: center; justify-content: center;
-}
-.p2p-trader-info {}
-.p2p-trader-name { font-size: 13px; font-weight: 700; color: var(--text-1); }
-.p2p-trader-meta { font-size: 11px; color: var(--text-3); margin-top: 1px; }
-.p2p-completion { display: flex; align-items: center; gap: 5px; margin-top: 3px; }
-.p2p-completion-bar {
-  width: 48px; height: 3px; background: var(--surface-3);
-  border-radius: 2px; overflow: hidden;
-}
-.p2p-completion-fill { height: 100%; background: var(--success); border-radius: 2px; }
-.p2p-rating { font-size: 10px; font-weight: 700; color: var(--success); }
-
-/* Price */
-.p2p-price-cell { font-size: 14px; font-weight: 700; color: var(--text-1); font-family: 'DM Mono', monospace; }
-.p2p-price-fiat { font-size: 11px; color: var(--text-3); margin-top: 2px; }
-/* Available */
-.p2p-avail-cell { font-size: 13px; color: var(--text-1); font-family: 'DM Mono', monospace; }
-.p2p-avail-fiat { font-size: 11px; color: var(--text-3); margin-top: 2px; }
-/* Limits */
-.p2p-limit-cell { font-size: 12px; color: var(--text-2); }
-/* Payment */
-.p2p-payment-tag {
-  display: inline-flex; align-items: center;
-  padding: 2px 7px; background: var(--surface-2); border: 1px solid var(--border);
-  border-radius: 4px; font-size: 11px; color: var(--text-2);
-  margin: 2px 2px 2px 0; white-space: nowrap;
-}
-/* Trade buttons */
-.btn-p2p-buy {
-  padding: 8px 18px; background: rgba(14,203,129,.15);
-  border: 1px solid rgba(14,203,129,.35); border-radius: var(--r-sm);
-  color: var(--success); font-size: 13px; font-weight: 700;
-  font-family: inherit; cursor: pointer; white-space: nowrap;
-  transition: background var(--t-fast), box-shadow var(--t-fast);
-}
-.btn-p2p-buy:hover { background: rgba(14,203,129,.25); box-shadow: 0 0 14px rgba(14,203,129,.2); }
-.btn-p2p-sell {
-  padding: 8px 18px; background: rgba(246,70,93,.12);
-  border: 1px solid rgba(246,70,93,.3); border-radius: var(--r-sm);
-  color: var(--danger); font-size: 13px; font-weight: 700;
-  font-family: inherit; cursor: pointer; white-space: nowrap;
-  transition: background var(--t-fast), box-shadow var(--t-fast);
-}
-.btn-p2p-sell:hover { background: rgba(246,70,93,.22); box-shadow: 0 0 14px rgba(246,70,93,.2); }
-
-/* Empty state */
-.p2p-empty {
-  text-align: center; padding: 52px 24px;
-  color: var(--text-3); font-size: 13px; line-height: 1.6;
+  font-size: 22px;
 }
 
-/* ── Trade Modal ── */
-.p2p-modal-overlay {
+.wc-wallet-name { font-size: 13px; font-weight: 700; color: var(--text-1); }
+.wc-wallet-desc { font-size: 11px; color: var(--text-3); }
+
+/* Connected wallets list */
+.wc-connected-section { margin-top: 8px; }
+
+.wc-section-header {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 14px;
+}
+
+.wc-section-header h3 {
+  font-size: 15px; font-weight: 700; color: var(--text-1); margin: 0;
+}
+
+.wc-count {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+.wc-connected-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 8px;
+  transition: border-color .15s;
+}
+
+.wc-connected-card:hover { border-color: var(--border-gold); }
+
+.wc-card-disabled {
+  opacity: .6;
+  border-color: rgba(239,68,68,.2) !important;
+}
+
+.wc-connected-icon {
+  font-size: 24px;
+  width: 40px; height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+
+.wc-connected-info { flex: 1; }
+.wc-connected-name { font-size: 13px; font-weight: 700; color: var(--text-1); display: flex; align-items: center; gap: 6px; }
+.wc-connected-address { font-size: 12px; font-family: 'DM Mono', monospace; color: var(--text-2); margin-top: 2px; }
+.wc-connected-meta { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+
+.wc-label-tag {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.wc-connected-actions {
+  display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+}
+
+.wc-status-badge {
+  font-size: 11px; font-weight: 700;
+  padding: 3px 8px; border-radius: 10px;
+  white-space: nowrap;
+}
+.wc-status-active   { color: #4ade80; background: rgba(74,222,128,.1); }
+.wc-status-disabled { color: #ef4444; background: rgba(239,68,68,.1); }
+
+.wc-remove-btn {
+  background: none;
+  border: 1px solid rgba(239,68,68,.2);
+  border-radius: 6px;
+  color: #ef4444;
+  padding: 5px 7px;
+  cursor: pointer;
+  display: flex; align-items: center;
+  transition: background .15s;
+}
+.wc-remove-btn:hover { background: rgba(239,68,68,.1); }
+
+.wc-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-3);
+}
+.wc-empty-icon  { font-size: 36px; margin-bottom: 10px; }
+.wc-empty-title { font-size: 14px; font-weight: 600; color: var(--text-2); }
+.wc-empty-sub   { font-size: 12px; margin-top: 4px; }
+
+/* ── Modal ── */
+.wc-modal-overlay {
   display: none; position: fixed; inset: 0;
   background: rgba(0,0,0,.72); backdrop-filter: blur(4px);
-  z-index: 600; align-items: center; justify-content: center; padding: 20px;
+  z-index: 700; align-items: center; justify-content: center; padding: 20px;
 }
-.p2p-modal-overlay.open { display: flex; }
-.p2p-modal {
-  background: var(--surface-1); border: 1px solid var(--border-gold);
-  border-radius: var(--r-xl); width: 100%; max-width: 480px;
-  box-shadow: 0 24px 80px rgba(0,0,0,.55); overflow: hidden;
+.wc-modal-overlay.open { display: flex; }
+
+.wc-modal {
+  background: var(--surface-1);
+  border: 1px solid var(--border-gold);
+  border-radius: var(--r-xl);
+  width: 100%; max-width: 480px;
+  box-shadow: 0 24px 80px rgba(0,0,0,.55);
 }
-.p2p-modal-header {
+
+.wc-modal-head {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 20px; border-bottom: 1px solid var(--border); background: var(--surface-2);
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
 }
-.p2p-modal-title { font-size: 15px; font-weight: 700; color: var(--text-1); }
-.p2p-modal-close {
-  background: none; border: 1px solid var(--border); border-radius: 4px;
-  padding: 5px 8px; color: var(--text-3); cursor: pointer;
-  transition: border-color var(--t-fast), color var(--t-fast);
+.wc-modal-title-row { display: flex; align-items: center; gap: 10px; }
+.wc-modal-icon  { font-size: 20px; }
+.wc-modal-title { font-size: 15px; font-weight: 700; color: var(--text-1); }
+.wc-modal-body  { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.wc-modal-foot  { display: flex; gap: 8px; justify-content: flex-end; padding: 12px 20px 20px; }
+
+.wc-form-group label {
+  display: block; font-size: 12px; font-weight: 700;
+  color: var(--text-2); text-transform: uppercase;
+  letter-spacing: .06em; margin-bottom: 8px;
 }
-.p2p-modal-close:hover { border-color: var(--danger); color: var(--danger); }
-.p2p-modal-body { padding: 20px; }
-.p2p-modal-trader {
-  display: flex; align-items: center; gap: 12px;
-  margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--border);
+
+/* Network grid */
+.wc-network-grid {
+  display: flex; flex-wrap: wrap; gap: 6px;
 }
-.p2p-modal-trader-name { font-size: 14px; font-weight: 700; color: var(--text-1); }
-.p2p-modal-trader-meta { font-size: 12px; color: var(--text-3); margin-top: 2px; }
-.p2p-modal-info {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px;
+.wc-net-btn {
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  color: var(--text-2);
+  font-size: 12px; font-weight: 700;
+  cursor: pointer;
+  transition: all .15s;
 }
-.p2p-info-item { background: var(--surface-2); border-radius: var(--r-sm); padding: 10px 12px; }
-.p2p-info-label { font-size: 10px; color: var(--text-3); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
-.p2p-info-value { font-size: 13px; font-weight: 700; color: var(--text-1); font-family: 'DM Mono', monospace; }
-.p2p-amount-row { display: flex; align-items: flex-end; gap: 8px; margin-bottom: 14px; }
-.p2p-amount-group { flex: 1; }
-.p2p-amount-label { font-size: 12px; color: var(--text-2); font-weight: 500; margin-bottom: 6px; }
-.p2p-amount-input {
-  width: 100%; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--border);
-  border-radius: var(--r-sm); color: var(--text-1); font-size: 15px;
-  font-family: 'DM Mono', monospace; font-weight: 600; outline: none;
-  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+.wc-net-btn:hover, .wc-net-btn.active {
+  border-color: var(--net-color, var(--gold));
+  color: var(--text-1);
+  background: color-mix(in srgb, var(--net-color, var(--gold)) 12%, transparent);
 }
-.p2p-amount-input:focus { border-color: var(--gold-dark); box-shadow: 0 0 0 3px var(--gold-a10); }
-.p2p-swap-icon { color: var(--text-3); padding-bottom: 10px; flex-shrink: 0; }
-.p2p-escrow-note {
-  display: flex; align-items: flex-start; gap: 10px;
-  background: rgba(14,203,129,.06); border: 1px solid rgba(14,203,129,.15);
-  border-radius: var(--r-sm); padding: 12px; font-size: 12px; color: var(--text-2); line-height: 1.5;
+.wc-net-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
 }
-.p2p-escrow-note svg { color: var(--success); flex-shrink: 0; margin-top: 1px; }
-.p2p-modal-footer { display: flex; gap: 10px; padding: 0 20px 20px; }
-.btn-p2p-cancel {
-  flex: 1; padding: 11px; background: var(--surface-2); border: 1px solid var(--border);
-  border-radius: var(--r-sm); color: var(--text-2); font-size: 13px; font-weight: 600;
+
+.wc-address-input {
+  font-family: 'DM Mono', monospace;
+  font-size: 12px !important;
+  letter-spacing: .02em;
+}
+.wc-address-hint {
+  font-size: 11px; color: var(--text-3); margin-top: 5px;
+}
+
+.wc-security-notice {
+  display: flex; align-items: flex-start; gap: 8px;
+  background: rgba(74,222,128,.06);
+  border: 1px solid rgba(74,222,128,.15);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 12px; color: var(--text-2);
+}
+.wc-security-notice svg { color: #4ade80; flex-shrink: 0; margin-top: 1px; }
+
+.wc-connect-btn {
+  display: flex; align-items: center; gap: 7px;
+  padding: 10px 20px;
+  background: var(--gold-gradient);
+  border: none; border-radius: 8px;
+  color: #0d0a02; font-size: 13px; font-weight: 700;
   font-family: inherit; cursor: pointer;
-  transition: border-color var(--t-fast), color var(--t-fast);
+  transition: opacity .15s, box-shadow .15s;
 }
-.btn-p2p-cancel:hover { border-color: var(--border-gold); color: var(--text-1); }
-.btn-p2p-confirm-buy {
-  flex: 2; padding: 11px; background: rgba(14,203,129,.15);
-  border: 1px solid rgba(14,203,129,.35); border-radius: var(--r-sm);
-  color: var(--success); font-size: 14px; font-weight: 700;
-  font-family: inherit; cursor: pointer;
-  transition: background var(--t-fast), box-shadow var(--t-fast);
+.wc-connect-btn:hover { opacity: .9; box-shadow: var(--gold-glow); }
+.wc-connect-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Responsive */
+@media (max-width: 600px) {
+  .wc-grid { grid-template-columns: repeat(2, 1fr); }
+  .wc-modal { max-width: 100%; }
+  .wc-modal-overlay { align-items: flex-end; padding: 0; }
+  .wc-modal { border-radius: var(--r-xl) var(--r-xl) 0 0; }
 }
-.btn-p2p-confirm-buy:hover { background: rgba(14,203,129,.25); box-shadow: 0 0 14px rgba(14,203,129,.2); }
-.btn-p2p-confirm-sell {
-  flex: 2; padding: 11px; background: rgba(246,70,93,.12);
-  border: 1px solid rgba(246,70,93,.3); border-radius: var(--r-sm);
-  color: var(--danger); font-size: 14px; font-weight: 700;
-  font-family: inherit; cursor: pointer;
-  transition: background var(--t-fast), box-shadow var(--t-fast);
-}
-.btn-p2p-confirm-sell:hover { background: rgba(246,70,93,.22); }
-
-/* ════════════════════════════════════
-   P2P RESPONSIVE — tablet & mobile
-════════════════════════════════════ */
-
-/* ── Tablet: drop Limits column ── */
-@media (max-width: 960px) {
-  .p2p-list-header,
-  .p2p-offer-row { grid-template-columns: 2fr 1.4fr 1.4fr 1.6fr 120px; }
-  .p2p-list-header > div:nth-child(4),
-  .p2p-offer-row .p2p-col-limits { display: none; }
-}
-
-/* ── Small tablet: also drop Available ── */
-@media (max-width: 720px) {
-  .p2p-list-header,
-  .p2p-offer-row { grid-template-columns: 2fr 1.6fr 1.8fr 110px; }
-  .p2p-list-header > div:nth-child(3),
-  .p2p-offer-row .p2p-col-avail { display: none; }
-}
-
-/* ── Mobile: full card layout ── */
-@media (max-width: 560px) {
-
-  /* Filter bar */
-  .p2p-filter-bar { flex-wrap: wrap; gap: 8px; }
-  .p2p-filter-input  { flex: 1 1 100%; max-width: 100%; }
-  .p2p-filter-select { flex: 1 1 calc(50% - 4px); max-width: none; }
-  .p2p-filter-actions {
-    flex: 1 1 100%; margin-left: 0;
-    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
-  }
-  .btn-refresh-p2p, .btn-create-offer { justify-content: center; }
-
-  /* Coin tabs — smaller text */
-  .p2p-coin-tab { padding: 10px 10px; font-size: 12px; gap: 4px; }
-
-  /* Hide desktop column header */
-  .p2p-list-header { display: none; }
-
-  /* ── Card layout via grid-template-areas ── */
-  .p2p-offer-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-areas:
-      "advertiser advertiser"
-      "price      avail"
-      "payment    payment"
-      "action     action";
-    grid-template-rows: auto auto auto auto;
-    gap: 0;
-    padding: 16px;
-    border-bottom: 1px solid var(--border);
-    /* reset desktop grid */
-    align-items: start;
-  }
-  .p2p-offer-row:hover { background: var(--surface-2); }
-
-  /* Assign grid areas */
-  .p2p-col-advertiser { grid-area: advertiser; display: flex; align-items: center; gap: 10px; padding: 0 0 14px 0; margin-bottom: 14px; border-bottom: 1px solid var(--border); padding-right: 0; }
-  .p2p-col-price      { grid-area: price;      display: block; padding: 0 8px 12px 0; }
-  .p2p-col-avail      { grid-area: avail;      display: block; padding: 0 0  12px 0; }
-  .p2p-col-limits     { display: none; }          /* hidden on mobile — shown in avail */
-  .p2p-col-payment    { grid-area: payment;    display: block; padding: 0 0 12px 0;  }
-  .p2p-col-action     { grid-area: action;     display: block; }
-
-  /* Show data labels */
-  .p2p-mob-label {
-    display: block;
-    font-size: 10px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: .07em; color: var(--text-3); margin-bottom: 4px;
-  }
-
-  /* Price bigger */
-  .p2p-price-cell { font-size: 18px; }
-
-  /* Full-width trade button */
-  .btn-p2p-buy,
-  .btn-p2p-sell {
-    width: 100%; padding: 12px;
-    font-size: 14px; text-align: center;
-    border-radius: var(--r-sm);
-  }
-
-  /* Modal → bottom sheet */
-  .p2p-modal-overlay { align-items: flex-end; padding: 0; }
-  .p2p-modal         { border-radius: 16px 16px 0 0; max-width: 100%; max-height: 92vh; overflow-y: auto; }
-  .p2p-amount-row    { flex-direction: column; }
-  .p2p-swap-icon     { display: none; }
-  .p2p-modal-info    { grid-template-columns: 1fr 1fr; }
+@media (max-width: 380px) {
+  .wc-grid { grid-template-columns: 1fr 1fr; }
 }
 
 
@@ -5550,3 +5454,921 @@ body.register-page #ticker-bar { display: none !important; }
   flex: 1; padding: 14px 20px; border-right: 1px solid var(--border); text-align: center;
 }
 .adm-trade-stat:last-child { border-right: none; }
+
+/* ── Filter buttons ── */
+.tx-filter-btn {
+  background: var(--surface-2, #1c1f2e);
+  border: 1px solid var(--border, #2a2d3a);
+  border-radius: 20px;
+  color: var(--text-3, #5a5e6e);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: all .15s;
+}
+.tx-filter-btn.active,
+.tx-filter-btn:hover {
+  background: var(--accent, #6c63ff);
+  color: #fff;
+  border-color: var(--accent, #6c63ff);
+}
+
+/* ── TX history row ── */
+.tx-history-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border, #2a2d3a);
+}
+.tx-history-row:last-child { border-bottom: none; }
+
+.tx-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 14px;
+}
+.tx-icon-receive  { background: rgba(74,222,128,.15); color: #4ade80; }
+.tx-icon-send     { background: rgba(234,179,8,.15);  color: #eab308; }
+.tx-icon-withdraw { background: rgba(239,68,68,.15);  color: #ef4444; }
+.tx-icon-trade    { background: rgba(108,99,255,.15); color: #6c63ff; }
+
+.tx-row-info  { flex: 1; }
+.tx-row-type  { font-size: 13px; font-weight: 700; color: var(--text-1, #e8eaf0); text-transform: capitalize; }
+.tx-row-sub   { font-size: 11px; color: var(--text-3, #5a5e6e); margin-top: 2px; }
+.tx-row-right { text-align: right; flex-shrink: 0; }
+.tx-row-amount { font-family: 'DM Mono', monospace; font-size: 14px; font-weight: 700; }
+.tx-amount-pos { color: #4ade80; }
+.tx-amount-neg { color: #ef4444; }
+.tx-amount-neu { color: var(--text-2, #9296a5); }
+
+.tx-status-pill {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+.pill-completed { background: rgba(74,222,128,.15); color: #4ade80; }
+.pill-pending   { background: rgba(234,179,8,.15);  color: #eab308; }
+.pill-failed    { background: rgba(239,68,68,.15);  color: #ef4444; }
+
+/* ═══ Support ticket table rows ════════════════════════════════ */
+.sup-ticket-row {
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.sup-ticket-row:hover  { background: var(--surface-2, #1c1f2e); }
+.sup-row-active        { background: var(--surface-2, #1c1f2e); outline: 2px solid var(--accent, #6c63ff); outline-offset: -2px; }
+.sup-row-unread td:first-child { border-left: 3px solid var(--accent, #6c63ff); }
+
+.sup-unread-pill {
+  display: inline-block;
+  background: var(--accent, #6c63ff);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+/* ═══ Live badge on Support tab ════════════════════════════════ */
+.adm-badge-live {
+  background: #ef4444;
+  color: #fff;
+  border-radius: 10px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 16px;
+  text-align: center;
+}
+
+/* ═══ Chat panel ═══════════════════════════════════════════════ */
+.sup-chat-panel {
+  margin-top: 20px;
+  border: 1px solid var(--accent, #6c63ff);
+  border-radius: 12px;
+  background: var(--surface, #13151f);
+  display: flex;
+  flex-direction: column;
+  height: 520px;
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(108,99,255,0.12);
+}
+
+.sup-chat-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 14px 18px;
+  background: var(--surface-2, #1c1f2e);
+  border-bottom: 1px solid var(--border, #2a2d3a);
+  flex-shrink: 0;
+}
+.sup-chat-meta    { display: flex; flex-direction: column; gap: 2px; }
+.sup-chat-user    { font-size: 14px; font-weight: 700; color: var(--text-1, #e8eaf0); }
+.sup-chat-subject { font-size: 12px; color: var(--text-2, #9296a5); }
+.sup-chat-ticket-id { font-size: 11px; color: var(--text-3, #5a5e6e); margin-top: 2px; }
+.sup-chat-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+.sup-close-btn    { color: #4ade80 !important; border-color: #4ade80 !important; font-size: 12px; }
+
+/* ── Messages thread ── */
+.sup-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  scroll-behavior: smooth;
+}
+.sup-loading { color: var(--text-3, #5a5e6e); font-size: 13px; text-align: center; margin: auto; }
+
+.sup-msg               { display: flex; flex-direction: column; max-width: 68%; }
+.sup-msg-user          { align-self: flex-start; }
+.sup-msg-staff         { align-self: flex-end; }
+
+.sup-msg-name {
+  font-size: 11px;
+  color: var(--text-3, #5a5e6e);
+  margin-bottom: 3px;
+  padding: 0 4px;
+}
+.sup-msg-staff .sup-msg-name { text-align: right; color: var(--accent, #6c63ff); }
+
+.sup-msg-bubble {
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 13px;
+  line-height: 1.55;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.sup-msg-user  .sup-msg-bubble { background: var(--surface-2, #1c1f2e); color: var(--text-1, #e8eaf0); border-bottom-left-radius: 4px; }
+.sup-msg-staff .sup-msg-bubble { background: var(--accent, #6c63ff);    color: #fff;                  border-bottom-right-radius: 4px; }
+
+.sup-msg-time {
+  font-size: 10px;
+  color: var(--text-3, #5a5e6e);
+  margin-top: 4px;
+  padding: 0 4px;
+}
+.sup-msg-staff .sup-msg-time { text-align: right; }
+
+/* ── Typing indicator ── */
+.sup-typing {
+  display: flex;
+  align-items: center;
+  padding: 6px 18px;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.sup-typing span {
+  width: 6px; height: 6px;
+  background: var(--text-3, #5a5e6e);
+  border-radius: 50%;
+  animation: supBounce 1.2s infinite;
+}
+.sup-typing span:nth-child(2) { animation-delay: 0.2s; }
+.sup-typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes supBounce {
+  0%,60%,100% { transform: translateY(0); }
+  30%         { transform: translateY(-5px); }
+}
+
+/* ── Reply form ── */
+.sup-reply-form {
+  display: flex;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border, #2a2d3a);
+  background: var(--surface-2, #1c1f2e);
+  flex-shrink: 0;
+  align-items: flex-end;
+}
+.sup-reply-input {
+  flex: 1;
+  background: var(--surface, #13151f);
+  border: 1px solid var(--border, #2a2d3a);
+  border-radius: 10px;
+  color: var(--text-1, #e8eaf0);
+  font-size: 13px;
+  padding: 10px 14px;
+  resize: none;
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+.sup-reply-input:focus { outline: none; border-color: var(--accent, #6c63ff); }
+.sup-send-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* ── Mobile ── */
+@media (max-width: 680px) {
+  .sup-chat-panel  { height: 480px; }
+  .sup-msg         { max-width: 90%; }
+}
+
+
+/* ── Manual Deposit user dropdown ── */
+.dep-user-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--surface-2, #1c1f2e);
+  border: 1px solid var(--accent, #6c63ff);
+  border-radius: 8px;
+  z-index: 100;
+  max-height: 180px;
+  overflow-y: auto;
+  margin-top: 4px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+}
+.dep-user-option {
+  padding: 10px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border, #2a2d3a);
+  color: var(--text-1, #e8eaf0);
+  transition: background 0.1s;
+}
+.dep-user-option:last-child { border-bottom: none; }
+.dep-user-option:hover      { background: var(--surface, #13151f); }
+.dep-user-option small      { color: var(--text-3, #5a5e6e); font-size: 11px; display:block; margin-top:2px; }
+
+/* ── TX type badges ── */
+.tx-type-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.tx-type-send     { background: rgba(234,179,8,.15);  color: #eab308; }
+.tx-type-withdraw { background: rgba(239,68,68,.15);  color: #ef4444; }
+.tx-type-deposit  { background: rgba(74,222,128,.15); color: #4ade80; }
+.tx-type-receive  { background: rgba(74,222,128,.15); color: #4ade80; }
+
+/* ── Approve / Decline action buttons ── */
+.btn-approve {
+  background: rgba(74,222,128,.15);
+  color: #4ade80;
+  border: 1px solid rgba(74,222,128,.3);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+.btn-approve:hover { background: rgba(74,222,128,.3); }
+
+.btn-decline {
+  background: rgba(239,68,68,.12);
+  color: #ef4444;
+  border: 1px solid rgba(239,68,68,.25);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+.btn-decline:hover { background: rgba(239,68,68,.25); }
+
+.tx-actions-row { display: flex; gap: 6px; align-items: center; }
+
+html, body {
+  height: auto;
+  min-height: 100vh;
+  overflow-y: auto;          /* was missing — prevents content being clipped */
+}
+
+/* App shell must not clip overflow */
+#app {
+  min-height: 100vh;
+  height: auto;
+  align-items: flex-start;
+}
+
+/* Main content area: scrollable, respects sidebar */
+#app-main {
+  min-height: 100vh;
+  height: auto;
+  overflow-y: visible;
+}
+
+#main {
+  min-height: calc(100vh - 64px);
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* ── 2. ADMIN PANEL SCROLL & OVERFLOW ────────────────────────── */
+/* The admin page itself must scroll */
+.adm-page {
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+/* Section panels: no fixed height, let content breathe */
+.adm-section {
+  height: auto;
+  overflow: visible;
+}
+
+/* Tables must scroll horizontally on small screens */
+.adm-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+}
+
+/* Support chat panel: fixed height only, inner scroll */
+.sup-chat-panel,
+#supportChatPanel {
+  max-height: calc(100vh - 180px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.sup-chat-messages,
+#supChatMessages {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── 3. PORTFOLIO / WALLET TABLES ────────────────────────────── */
+.portfolio-table-wrap,
+.wallet-table-wrap,
+.tx-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ── 4. MODALS: always scrollable on small screens ───────────── */
+.adm-modal-overlay,
+.modal-overlay {
+  overflow-y: auto;
+  align-items: flex-start;
+  padding: 20px;
+}
+
+.adm-modal,
+.modal-box {
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  margin: auto;
+}
+
+/* ── 5. RESPONSIVE BREAKPOINTS ───────────────────────────────── */
+
+/* Tablet — 1024px */
+@media (max-width: 1024px) {
+  #main {
+    padding: 24px 20px;
+  }
+
+  .adm-tabs {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .adm-tab {
+    font-size: 12px;
+    padding: 8px 12px;
+  }
+
+  /* Hide less-important table columns */
+  .adm-table td:nth-child(6),
+  .adm-table th:nth-child(6) {
+    display: none;
+  }
+}
+
+/* Mobile — 768px */
+@media (max-width: 768px) {
+  #main {
+    padding: 16px 14px 80px;
+  }
+
+  /* Admin tabs scroll horizontally */
+  .adm-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+    gap: 0;
+    border-radius: var(--r-md);
+  }
+
+  .adm-tab {
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-size: 11px;
+    padding: 8px 10px;
+  }
+
+  /* Stack form rows */
+  .adm-form-row {
+    flex-direction: column;
+  }
+
+  /* Section header stacks */
+  .adm-section-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  /* Stats strip wraps */
+  .adm-stats {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .adm-stat {
+    flex: 1 1 calc(50% - 8px);
+    min-width: 120px;
+  }
+
+  /* Pending TX table — hide less critical columns */
+  #pendingTxGrid td:nth-child(6),
+  #pendingTxGrid th:nth-child(6),
+  #pendingTxGrid td:nth-child(7),
+  #pendingTxGrid th:nth-child(7) {
+    display: none;
+  }
+
+  /* Support chat panel full height on mobile */
+  #supportChatPanel {
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+
+  /* TX action modal full-width */
+  #txActionModal .adm-modal {
+    max-width: 100%;
+    margin: 0;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+  }
+
+  #txActionModal {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  /* User detail panel full screen */
+  #userDetailPanel {
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+    border-radius: 0;
+    overflow-y: auto;
+  }
+
+  /* Approve/decline buttons stack */
+  .tx-actions-row {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .btn-approve,
+  .btn-decline {
+    width: 100%;
+    text-align: center;
+    padding: 6px 8px;
+  }
+
+  /* Cards on home page */
+  .widget-pages {
+    grid-template-columns: 1fr;
+  }
+
+  /* Send/receive/withdraw forms */
+  .send-page,
+  .receive-page,
+  .withdraw-page {
+    max-width: 100%;
+    padding: 0;
+  }
+}
+
+/* Small mobile — 480px */
+@media (max-width: 480px) {
+  #main {
+    padding: 12px 10px 80px;
+  }
+
+  .adm-stat {
+    flex: 1 1 100%;
+  }
+
+  /* Full-width inputs */
+  .adm-input,
+  .adm-form-card input,
+  .adm-form-card select {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Hide all but essential columns in admin tables */
+  .adm-table td:nth-child(n+5),
+  .adm-table th:nth-child(n+5) {
+    display: none;
+  }
+
+  /* Show all columns in pending TX (only hide ref/date) */
+  #pendingTxGrid td,
+  #pendingTxGrid th {
+    display: table-cell;
+  }
+
+  #pendingTxGrid td:nth-child(6),
+  #pendingTxGrid th:nth-child(6),
+  #pendingTxGrid td:nth-child(7),
+  #pendingTxGrid th:nth-child(7) {
+    display: none;
+  }
+
+  /* Toast bottom padding for bottom nav */
+  .toast { bottom: 72px !important; }
+}
+
+/* ── 6. TX TYPE BADGES (used in pending table) ───────────────── */
+.tx-type-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  white-space: nowrap;
+}
+
+.tx-type-send     { background: rgba(234,179,8,.15);  color: #eab308; }
+.tx-type-withdraw { background: rgba(239,68,68,.15);  color: #ef4444; }
+.tx-type-receive  { background: rgba(74,222,128,.15); color: #4ade80; }
+.tx-type-deposit  { background: rgba(74,222,128,.15); color: #4ade80; }
+.tx-type-trade    { background: rgba(108,99,255,.15); color: #6c63ff; }
+
+/* ── 7. APPROVE / DECLINE BUTTONS ────────────────────────────── */
+.btn-approve {
+  background: rgba(74,222,128,.12);
+  color: #4ade80;
+  border: 1px solid rgba(74,222,128,.25);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+  white-space: nowrap;
+}
+.btn-approve:hover { background: rgba(74,222,128,.25); }
+.btn-approve:disabled { opacity: .5; cursor: not-allowed; }
+
+.btn-decline {
+  background: rgba(239,68,68,.10);
+  color: #ef4444;
+  border: 1px solid rgba(239,68,68,.22);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+  white-space: nowrap;
+}
+.btn-decline:hover { background: rgba(239,68,68,.22); }
+.btn-decline:disabled { opacity: .5; cursor: not-allowed; }
+
+.tx-actions-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* ── 8. MANUAL DEPOSIT USER DROPDOWN ────────────────────────── */
+.dep-user-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--surface-2, #1c1f2e);
+  border: 1px solid var(--accent, #6c63ff);
+  border-radius: 8px;
+  z-index: 100;
+  max-height: 180px;
+  overflow-y: auto;
+  margin-top: 4px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+}
+
+.dep-user-option {
+  padding: 10px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border, #2a2d3a);
+  color: var(--text-1, #e8eaf0);
+  transition: background .1s;
+}
+
+.dep-user-option:last-child { border-bottom: none; }
+.dep-user-option:hover      { background: var(--surface, #13151f); }
+.dep-user-option small      { color: var(--text-3, #5a5e6e); font-size: 11px; display: block; margin-top: 2px; }
+
+/* ── 1. VIEWPORT-LOCKED SHELL ────────────────────────────────────
+   The entire app stays within the viewport.
+   Only #main scrolls — nothing else.
+──────────────────────────────────────────────────────────────── */
+html {
+  height: 100%;
+  overflow: hidden;           /* html never scrolls — #main does */
+}
+
+body {
+  height: 100%;
+  overflow: hidden;           /* same — prevent double scrollbars  */
+}
+
+#app {
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: row;
+}
+
+/* Sidebar: full height, scrolls its own nav if needed */
+#sidebar {
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex-shrink: 0;
+}
+
+/* Right-side column: fill remaining width, scroll vertically */
+#app-main {
+  flex: 1;
+  height: 100vh;
+  overflow: hidden;           /* clips ticker + main as a unit     */
+  display: flex;
+  flex-direction: column;
+  min-width: 0;               /* prevent flex blowout on narrow screens */
+}
+
+/* Ticker bar: fixed height, never shrinks */
+#ticker-bar {
+  flex-shrink: 0;
+}
+
+/* ── #main: THE ONLY SCROLL CONTAINER ───────────────────────── */
+#main {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  min-height: 0;              /* critical: allows flex child to shrink */
+  box-sizing: border-box;
+}
+
+/* ── 2. MARKET PAGE — FILLS #main, TABLE SCROLLS ─────────────── */
+.market-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;               /* fill the scrolling #main          */
+  min-height: 0;
+  overflow: visible;          /* let #main handle scroll           */
+}
+
+/* Fix: tabs were column layout — force horizontal */
+.market-tabs {
+  flex-direction: row !important;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: visible;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: flex-start;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;      /* hide scrollbar on tabs — clean look */
+}
+.market-tabs::-webkit-scrollbar { display: none; }
+
+/* Meta row (search + stats) never shrinks */
+.market-meta {
+  flex-shrink: 0;
+}
+
+/* Table wrapper: takes all remaining height, scrolls both axes */
+.table-wrap {
+  flex: 1;
+  min-height: 0;              /* critical for flex shrink          */
+  overflow-x: auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border);
+}
+
+/* Sticky header stays put while table body scrolls */
+.market-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--surface-2);
+}
+
+/* ── 3. ALL OTHER PAGES — CONSISTENT SCROLL BEHAVIOUR ────────── */
+/* Every page section can grow and will scroll inside #main */
+section,
+.wallet-page,
+.send-page,
+.receive-page,
+.withdraw-page,
+.support-page,
+.settings-wrapper,
+.about-page,
+.wc-page,
+.adm-page {
+  min-height: 0;
+  overflow: visible;
+}
+
+/* ── 4. MOBILE — SIDEBAR OVERLAY, CONTENT FILLS SCREEN ─────────
+   At 768px the sidebar slides over content.
+   #main gets the full width and still scrolls.
+──────────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  html, body {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  #app {
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* Sidebar becomes an overlay — doesn't affect layout flow */
+  #sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 300;
+    height: 100vh;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    width: var(--sidebar-w);
+  }
+
+  #sidebar.mobile-open {
+    transform: translateX(0);
+    box-shadow: 4px 0 32px rgba(0, 0, 0, 0.55);
+  }
+
+  /* app-main fills full width */
+  #app-main {
+    margin-left: 0;
+    width: 100%;
+    height: 100vh;
+  }
+
+  /* Topbar: fixed height at top */
+  #topbar {
+    display: flex;
+    flex-shrink: 0;
+  }
+
+  /* Bottom nav: fixed, so pad #main bottom to compensate */
+  #main {
+    padding-bottom: 80px;
+    padding-top: 16px;
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  /* Market table: hide low-priority columns */
+  .market-table td:nth-child(n+6),
+  .market-table th:nth-child(n+6) {
+    display: none;
+  }
+
+  /* Market tabs: compact on mobile */
+  .market-tab {
+    padding: 7px 14px;
+    font-size: 12px;
+  }
+}
+
+/* ── 5. TABLET 768–1280px ────────────────────────────────────── */
+@media (min-width: 769px) and (max-width: 1280px) {
+  #main {
+    padding: 24px 24px;
+  }
+
+  /* Market table: hide least-important columns */
+  .market-table td:nth-child(n+8),
+  .market-table th:nth-child(n+8) {
+    display: none;
+  }
+}
+
+/* ── 6. SMALL MOBILE — 480px ─────────────────────────────────── */
+@media (max-width: 480px) {
+  #main {
+    padding: 12px 10px 80px;
+  }
+
+  .market-search {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .market-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  /* Show only the most important 4 columns */
+  .market-table td:nth-child(n+5),
+  .market-table th:nth-child(n+5) {
+    display: none;
+  }
+
+  /* Always show rank, pair, price, change */
+  .market-table td:nth-child(1),
+  .market-table th:nth-child(1),
+  .market-table td:nth-child(2),
+  .market-table th:nth-child(2),
+  .market-table td:nth-child(3),
+  .market-table th:nth-child(3),
+  .market-table td:nth-child(4),
+  .market-table th:nth-child(4) {
+    display: table-cell;
+  }
+}
+
+/* ── 7. VERY TALL MARKET TABLE — prevent collapse ────────────── */
+/* Ensures table area has at least some height even with few rows */
+.table-wrap {
+  min-height: 200px;
+}
+
+/* ── 8. MODAL SCROLL FIX ─────────────────────────────────────── */
+/* Modals sit above the locked shell via fixed positioning */
+.modal-overlay,
+.adm-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  overflow-y: auto;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.modal-overlay.open,
+.adm-modal-overlay.open {
+  display: flex;
+}
+
+.modal-box,
+.adm-modal {
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+  margin: auto;
+}
+
+/* ── 9. FOOTER — only renders inside #main scroll ────────────── */
+#footer {
+  flex-shrink: 0;
+}

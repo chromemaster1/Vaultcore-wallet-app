@@ -71,7 +71,6 @@ class Transaction(db.Model):
     def __repr__(self):
         return f'<Transaction {self.tx_id} {self.type}>'
 
-
 class Trade(db.Model):
     __tablename__ = 'trades'
 
@@ -194,3 +193,43 @@ class SupportMessage(db.Model):
 
     def __repr__(self):
         return f'<Message ticket={self.ticket_id}>'
+
+class ConnectedWallet(db.Model):
+    """
+    Stores an external wallet connected by a user.
+    Admin can toggle enabled/disabled per wallet.
+    """
+    __tablename__ = 'connected_wallets'
+
+    id           = db.Column(db.Integer, primary_key=True)
+    user_id      = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+
+    # Wallet metadata
+    wallet_name  = db.Column(db.String(80),  nullable=False)          # e.g. "MetaMask", "Trust Wallet"
+    wallet_type  = db.Column(db.String(40),  nullable=False)          # metamask | trustwallet | coinbase | walletconnect | manual
+    address      = db.Column(db.String(200), nullable=False)          # the actual wallet address
+    network      = db.Column(db.String(40),  nullable=False)          # ETH, BTC, BNB, SOL, etc.
+    label        = db.Column(db.String(100), nullable=True)           # user-defined label
+
+    # Status
+    is_enabled   = db.Column(db.Boolean, default=True, nullable=False)  # admin can disable
+    verified_at  = db.Column(db.DateTime, nullable=True)               # when address was verified
+    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at   = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationship
+    user         = db.relationship('User', backref=db.backref('connected_wallets', lazy=True))
+
+    def to_dict(self):
+        return {
+            "id":          self.id,
+            "wallet_name": self.wallet_name,
+            "wallet_type": self.wallet_type,
+            "address":     self.address,
+            "network":     self.network,
+            "label":       self.label or '',
+            "is_enabled":  self.is_enabled,
+            "verified_at": self.verified_at.isoformat() if self.verified_at else None,
+            "created_at":  self.created_at.isoformat() if self.created_at else None,
+        }
+ 

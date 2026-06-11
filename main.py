@@ -21,13 +21,12 @@ import pyotp
 from model import (
     Notification, User, db, UserSettings,
     Wallet, Transaction, MarketData, WalletHash,
-    SupportTicket, SupportMessage, Trade
+    SupportTicket, SupportMessage, Trade, ConnectedWallet
 )
 from apscheduler.schedulers.background import BackgroundScheduler
 from werkzeug.utils import secure_filename
 from sqlalchemy import inspect
 import sqlite3
-
 
 _base_dir = pathlib.Path(__file__).parent.resolve()
 load_dotenv(dotenv_path=_base_dir / '.env')
@@ -102,15 +101,6 @@ with app.app_context():
 
     except Exception as e:
         log.error("Failed to create database tables: %s", e, exc_info=True)
-
-# Start background scheduler for periodic tasks
-# try:
-#     scheduler = BackgroundScheduler()
-#     scheduler.add_job(lambda: persist_market_snapshot(200), 'interval', seconds=60, id='market_persist')
-#     scheduler.start()
-#     log.info("Background scheduler started")
-# except Exception as e:
-#     log.error("Failed to start scheduler: %s", e, exc_info=True)
 
 if os.environ.get("WERKZEUG_RUN_MAIN") != "false":
     scheduler = BackgroundScheduler()
@@ -1534,7 +1524,24 @@ def home():
         return redirect(url_for('login'))
 
     log.info("Home - user %s authenticated", user.email)
-    total_balance = sum((w.balance or 0.0) for w in user.wallets) if user.wallets else 0.0
+
+    # Calculate total balance in USD — same logic as /api/wallet-summary
+    # so home dashboard and portfolio always show the same number
+    total_balance = 0.0
+    if user.wallets:
+        for w in user.wallets:
+            if not w.balance:
+                continue
+            md = (MarketData.query
+                  .filter_by(symbol=w.symbol.upper())
+                  .order_by(MarketData.last_updated.desc())
+                  .first())
+            if md and md.price:
+                total_balance += float(w.balance) * float(md.price)
+            elif w.symbol.upper() in ('USDT', 'USDC', 'DAI', 'BUSD'):
+                # stablecoins = 1:1 USD when no market data
+                total_balance += float(w.balance)
+            # else: unknown price, skip (don't add raw units)
 
     # Ensure news is a list (sometimes can be None or malformed)
     if not news or not isinstance(news, list):
@@ -1716,63 +1723,317 @@ def api_admin_pending_transactions():
 @app.route('/api/admin/tx/<int:tx_id>/action', methods=['POST'])
 @admin_required
 def api_admin_tx_action(tx_id):
-    data = request.get_json(force=True)
-    action = (data.get('action') or '').lower()
-    note = data.get('note', '')
+    data   = request.get_json(force=True) or {}
+    action = (data.get('action') or '').lower().strip()
+    note   = (data.get('note')   or '').strip()
+
+    if action not in ('approve', 'reject'):
+        return jsonify({"error": "action must be 'approve' or 'reject'"}), 400
 
     tx = Transaction.query.filter_by(id=tx_id).first()
     if not tx:
         return jsonify({"error": "Transaction not found"}), 404
 
     if tx.status != 'pending':
-        return jsonify({"error": "Transaction is not pending"}), 400
+        return jsonify({"error": f"Transaction is already '{tx.status}'"}), 400
 
     try:
-        user = tx.user
+        user   = tx.user
+        amount = float(tx.amount or 0)
+        symbol = tx.symbol or '—'
+
         if action == 'approve':
-            # Deduct from user's wallet balance
-            wallet = Wallet.query.filter_by(user_id=user.id, symbol=tx.symbol.upper()).first()
-            if not wallet or wallet.balance < tx.amount:
-                tx.status = 'failed'
-                tx.notes = 'Insufficient balance on approval'
-                db.session.commit()
-                # notify user
-                n = Notification(user_id=user.id, title='Transaction failed', message=f'Your transaction {tx.tx_id} failed on approval (insufficient balance).', type='error')
-                db.session.add(n)
-                db.session.commit()
-                return jsonify({"success": False, "error": "Insufficient balance"}), 422
+            if tx.type in ('send', 'withdraw'):
+                # Deduct from wallet
+                wallet = Wallet.query.filter_by(user_id=user.id, symbol=symbol.upper()).first()
+                if not wallet or float(wallet.balance or 0) < amount:
+                    tx.status       = 'failed'
+                    tx.notes        = note or 'Insufficient balance at approval time'
+                    tx.completed_at = datetime.utcnow()
+                    db.session.commit()
+                    n = Notification(
+                        user_id = user.id,
+                        title   = f'❌ {tx.type.capitalize()} failed',
+                        message = (
+                            f'Your {tx.type} of {amount} {symbol} could not be processed'
+                            f' — insufficient balance.'
+                            + (f' Note: {note}' if note else '')
+                        ),
+                        type = 'error',
+                    )
+                    db.session.add(n)
+                    db.session.commit()
+                    return jsonify({"success": False, "error": "Insufficient balance"}), 422
 
-            wallet.balance = float(wallet.balance) - float(tx.amount)
-            tx.status = 'completed'
-            tx.completed_at = datetime.utcnow()
-            tx.notes = note
-            db.session.commit()
+                wallet.balance  = float(wallet.balance) - amount
+                tx.status       = 'completed'
+                tx.completed_at = datetime.utcnow()
+                tx.notes        = note or f'Approved by admin'
 
-            n = Notification(user_id=user.id, title='Transaction approved', message=f'Your transaction {tx.tx_id} was approved and processed.', type='success')
+                label = 'Withdrawal' if tx.type == 'withdraw' else 'Transfer'
+                n = Notification(
+                    user_id = user.id,
+                    title   = f'✅ {label} approved',
+                    message = (
+                        f'Your {tx.type} of {amount} {symbol} has been approved and processed.'
+                        + (f' Note: {note}' if note else '')
+                    ),
+                    type = 'success',
+                )
+
+            elif tx.type in ('receive', 'deposit'):
+                # Receive / deposit — credit wallet
+                wallet = Wallet.query.filter_by(user_id=user.id, symbol=symbol.upper()).first()
+                if not wallet:
+                    wallet = Wallet(
+                        user_id = user.id,
+                        symbol  = symbol.upper(),
+                        address = secrets.token_hex(20),
+                        balance = 0.0,
+                    )
+                    db.session.add(wallet)
+                wallet.balance  = float(wallet.balance or 0) + amount
+                tx.status       = 'completed'
+                tx.completed_at = datetime.utcnow()
+                tx.notes        = note or 'Approved by admin'
+                n = Notification(
+                    user_id = user.id,
+                    title   = '✅ Deposit confirmed',
+                    message = (
+                        f'Your deposit of {amount} {symbol} has been confirmed and credited to your wallet.'
+                        + (f' Note: {note}' if note else '')
+                    ),
+                    type = 'success',
+                )
+
+            else:
+                # Generic fallback
+                tx.status       = 'completed'
+                tx.completed_at = datetime.utcnow()
+                tx.notes        = note or 'Approved'
+                n = Notification(
+                    user_id = user.id,
+                    title   = '✅ Transaction approved',
+                    message = f'Your transaction of {amount} {symbol} was approved.' + (f' Note: {note}' if note else ''),
+                    type    = 'success',
+                )
+
             db.session.add(n)
             db.session.commit()
+            log.info("admin: APPROVED tx %s (%s %s %s) for %s", tx.tx_id, tx.type, amount, symbol, user.email)
+            return jsonify({"success": True, "status": "completed"})
 
-            return jsonify({"success": True})
-
-        elif action == 'reject':
-            tx.status = 'failed'
-            tx.notes = note
+        else:  # reject
+            # If this was a withdrawal, the user's balance was NOT pre-deducted
+            # (VaultCore deducts on APPROVE, not on submit) — so no refund needed.
+            # If for some reason your flow pre-deducts, add the refund here.
+            tx.status       = 'failed'
+            tx.notes        = note or 'Rejected by admin'
             tx.completed_at = datetime.utcnow()
             db.session.commit()
 
-            n = Notification(user_id=user.id, title='Transaction rejected', message=f'Your transaction {tx.tx_id} was rejected by admin.', type='error')
+            label = 'Withdrawal' if tx.type == 'withdraw' else tx.type.capitalize()
+            n = Notification(
+                user_id = user.id,
+                title   = f'❌ {label} declined',
+                message = (
+                    f'Your {tx.type} of {amount} {symbol} was declined.'
+                    + (f' Reason: {note}' if note else ' Please contact support if you have questions.')
+                ),
+                type = 'error',
+            )
             db.session.add(n)
             db.session.commit()
-
-            return jsonify({"success": True})
-
-        else:
-            return jsonify({"error": "Invalid action"}), 400
+            log.info("admin: REJECTED tx %s (%s %s %s) for %s", tx.tx_id, tx.type, amount, symbol, user.email)
+            return jsonify({"success": True, "status": "failed"})
 
     except Exception as e:
         db.session.rollback()
-        log.error("admin tx action failed: %s", e, exc_info=True)
+        log.error("api_admin_tx_action failed: %s", e, exc_info=True)
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/manual-deposit', methods=['POST'])
+@admin_required
+def api_manual_deposit():
+    """
+    Admin manually credits a user wallet.
+    POST body: { user_email, symbol, amount, note? }
+
+    Flow:
+      1. Validate inputs
+      2. Find user by email
+      3. Create Transaction (type=receive, status=completed)
+      4. Credit or create Wallet row
+      5. Create Notification for the user
+      6. Return { success, tx_id, new_balance }
+    """
+    data = request.get_json(force=True) or {}
+
+    user_email = (data.get('user_email') or '').strip().lower()
+    symbol     = (data.get('symbol')     or '').strip().upper()
+    note       = (data.get('note')       or '').strip()
+
+    try:
+        amount = float(data.get('amount', 0) or 0)
+    except (TypeError, ValueError):
+        return jsonify({"error": "amount must be a valid number"}), 400
+
+    # ── Validate ──────────────────────────────────────────────────
+    if not user_email:
+        return jsonify({"error": "user_email is required"}), 400
+    if not symbol:
+        return jsonify({"error": "symbol / network is required"}), 400
+    if amount <= 0:
+        return jsonify({"error": "amount must be greater than zero"}), 400
+
+    # ── Lookup user ───────────────────────────────────────────────
+    user = User.query.filter_by(email=user_email).first()
+    if not user:
+        # try case-insensitive
+        user = User.query.filter(User.email.ilike(user_email)).first()
+    if not user:
+        return jsonify({"error": f"No user found with email: {user_email}"}), 404
+
+    try:
+        tx_id = secrets.token_hex(32)
+
+        # ── Transaction ───────────────────────────────────────────
+        tx_kwargs = dict(
+            tx_id    = tx_id,
+            user_id  = user.id,
+            type     = 'receive',
+            symbol   = symbol,
+            amount   = amount,
+            status   = 'completed',
+            notes    = note or 'Admin manual deposit',
+        )
+        # completed_at is optional — only set if the column exists
+        try:
+            tx = Transaction(**tx_kwargs, completed_at=datetime.utcnow())
+        except TypeError:
+            tx = Transaction(**tx_kwargs)
+
+        db.session.add(tx)
+
+        # ── Wallet — credit or create ─────────────────────────────
+        wallet = Wallet.query.filter_by(user_id=user.id, symbol=symbol).first()
+        if not wallet:
+            wallet = Wallet(
+                user_id = user.id,
+                symbol  = symbol,
+                address = secrets.token_hex(20),
+                balance = 0.0,
+            )
+            db.session.add(wallet)
+
+        prev_balance   = float(wallet.balance or 0)
+        wallet.balance = prev_balance + amount
+
+        # ── Notification ──────────────────────────────────────────
+        notif_msg = (
+            f'{amount} {symbol} has been credited to your wallet.'
+            + (f' ({note})' if note else '')
+        )
+        try:
+            n = Notification(
+                user_id = user.id,
+                title   = '💰 Deposit successful',
+                message = notif_msg,
+                type    = 'success',
+            )
+            db.session.add(n)
+        except Exception as ne:
+            log.warning("Could not create notification: %s", ne)
+
+        db.session.commit()
+
+        log.info(
+            "admin: manual deposit — %.6f %s for %s  tx=%s  prev_bal=%.6f  new_bal=%.6f",
+            amount, symbol, user_email, tx_id, prev_balance, float(wallet.balance)
+        )
+
+        return jsonify({
+            "success":     True,
+            "tx_id":       tx_id,
+            "new_balance": float(wallet.balance),
+            "user_email":  user_email,
+            "symbol":      symbol,
+            "amount":      amount,
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        log.error("api_manual_deposit failed: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+# ─────────────────────────────────────────────────────────────────
+#  Also fix api_admin_recent_deposits — filter by notes containing
+#  'admin' OR by a dedicated is_manual flag (using notes field)
+# ─────────────────────────────────────────────────────────────────
+
+@app.route('/api/admin/recent-deposits')
+@admin_required
+def api_admin_recent_deposits():
+    """Last 50 receive-type transactions, newest first."""
+    try:
+        txs = (Transaction.query
+               .filter(Transaction.type == 'receive')
+               .order_by(Transaction.created_at.desc())
+               .limit(50)
+               .all())
+
+        return jsonify([{
+            "id":         t.id,
+            "tx_id":      t.tx_id or '',
+            "user_email": t.user.email if t.user else '—',
+            "symbol":     t.symbol or '',
+            "amount":     float(t.amount or 0),
+            "notes":      t.notes or '',
+            "status":     t.status or '',
+            "created_at": t.created_at.isoformat() if t.created_at else '',
+        } for t in txs])
+
+    except Exception as e:
+        log.error("api_admin_recent_deposits: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+# ─────────────────────────────────────────────────────────────────
+#  User-facing transaction history  GET /api/transactions
+# ─────────────────────────────────────────────────────────────────
+
+@app.route('/api/transactions')
+@login_required
+def api_user_transactions():
+    """
+    GET /api/transactions?type=all&limit=50
+    Returns the current user's transaction history, newest first.
+    """
+    user    = get_current_user()
+    tx_type = request.args.get('type', 'all')
+    limit   = min(int(request.args.get('limit', 50)), 200)
+
+    query = Transaction.query.filter_by(user_id=user.id)
+    if tx_type and tx_type != 'all':
+        query = query.filter(Transaction.type == tx_type)
+    txs = query.order_by(Transaction.created_at.desc()).limit(limit).all()
+
+    return jsonify([{
+        "id":           t.id,
+        "tx_id":        t.tx_id or '',
+        "type":         t.type or '',
+        "symbol":       t.symbol or '',
+        "amount":       float(t.amount or 0),
+        "to_address":   t.to_address if hasattr(t, 'to_address') else None,
+        "status":       t.status or '',
+        "notes":        t.notes or '',
+        "fee":          float(t.fee) if (hasattr(t, 'fee') and t.fee) else 0,
+        "created_at":   t.created_at.isoformat() if t.created_at else '',
+        "completed_at": (t.completed_at.isoformat()
+                         if (hasattr(t, 'completed_at') and t.completed_at)
+                         else None),
+    } for t in txs])
 
 @app.route('/receive')
 @login_required
@@ -2036,11 +2297,6 @@ def api_usdt_balance():
     balance = get_usdt_balance()
     return jsonify({"balance": balance})
 
-@app.route('/p2p')
-def p2p_market():
-    """Render P2P trading marketplace."""
-    return render_template('p2p_market.html')
-
 @app.route('/wallet')
 @login_required
 def wallet():
@@ -2095,6 +2351,119 @@ def api_wallet_summary():
         "holdings": holdings,
         "open_trades": open_trades,
     })
+
+@app.route('/wallet-connect')
+@login_required
+def wallet_connect():
+    """Wallet Connect page — user connects external wallets."""
+    user   = get_current_user()
+    wallets = ConnectedWallet.query.filter_by(user_id=user.id).order_by(ConnectedWallet.created_at.desc()).all()
+    return render_template('wallet_connect.html', connected_wallets=wallets)
+
+
+@app.route('/api/wallet-connect/add', methods=['POST'])
+@login_required
+def api_wallet_connect_add():
+    """
+    User adds a new external wallet connection.
+    POST: { wallet_type, address, network, label? }
+    """
+    user = get_current_user()
+    data = request.get_json(force=True) or {}
+
+    wallet_type = (data.get('wallet_type') or '').strip().lower()
+    address     = (data.get('address')     or '').strip()
+    network     = (data.get('network')     or '').strip().upper()
+    label       = (data.get('label')       or '').strip()
+
+    # Wallet type → display name map
+    WALLET_NAMES = {
+        'metamask':     'MetaMask',
+        'trustwallet':  'Trust Wallet',
+        'coinbase':     'Coinbase Wallet',
+        'walletconnect':'WalletConnect',
+        'phantom':      'Phantom',
+        'ledger':       'Ledger',
+        'trezor':       'Trezor',
+        'manual':       'Manual Address',
+    }
+
+    if not wallet_type:
+        return jsonify({"error": "wallet_type is required"}), 400
+    if not address:
+        return jsonify({"error": "Wallet address is required"}), 400
+    if not network:
+        return jsonify({"error": "Network is required"}), 400
+
+    # Basic address length validation
+    if len(address) < 10 or len(address) > 200:
+        return jsonify({"error": "Invalid wallet address"}), 400
+
+    # Prevent duplicate address+network combos for this user
+    existing = ConnectedWallet.query.filter_by(
+        user_id=user.id, address=address, network=network
+    ).first()
+    if existing:
+        return jsonify({"error": "This address is already connected on this network"}), 409
+
+    try:
+        cw = ConnectedWallet(
+            user_id     = user.id,
+            wallet_name = WALLET_NAMES.get(wallet_type, wallet_type.title()),
+            wallet_type = wallet_type,
+            address     = address,
+            network     = network,
+            label       = label or None,
+            is_enabled  = True,
+            verified_at = datetime.utcnow(),
+        )
+        db.session.add(cw)
+
+        # Notify admin
+        admins = User.query.filter_by(role='admin').all()
+        for admin in admins:
+            notif = Notification(
+                user_id = admin.id,
+                title   = f'🔗 New wallet connected',
+                message = f'{user.email} connected a {WALLET_NAMES.get(wallet_type, wallet_type)} wallet on {network}: {address[:16]}…',
+                type    = 'info',
+            )
+            db.session.add(notif)
+
+        db.session.commit()
+        log.info("wallet_connect: user %s added %s on %s: %s", user.email, wallet_type, network, address[:16])
+        return jsonify({"success": True, "wallet": cw.to_dict()})
+
+    except Exception as e:
+        db.session.rollback()
+        log.error("api_wallet_connect_add failed: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/wallet-connect/<int:wallet_id>/remove', methods=['POST'])
+@login_required
+def api_wallet_connect_remove(wallet_id):
+    """User removes one of their connected wallets."""
+    user = get_current_user()
+    cw   = ConnectedWallet.query.filter_by(id=wallet_id, user_id=user.id).first()
+    if not cw:
+        return jsonify({"error": "Connected wallet not found"}), 404
+    try:
+        db.session.delete(cw)
+        db.session.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/wallet-connect/list')
+@login_required
+def api_wallet_connect_list():
+    """Return the current user's connected wallets."""
+    user    = get_current_user()
+    wallets = ConnectedWallet.query.filter_by(user_id=user.id).order_by(ConnectedWallet.created_at.desc()).all()
+    return jsonify([w.to_dict() for w in wallets])
 
 @app.route('/register', methods=['GET'])
 def register():
@@ -2516,8 +2885,6 @@ def api_admin_set_wallet_hash():
         return jsonify({"error": "Failed to save wallet hash."}), 500
 
 
-
-
 @app.route('/api/settings/notifications')
 @login_required
 def api_notifications():
@@ -2638,63 +3005,6 @@ def api_admin_toggle_user_active(user_id):
         log.error("admin: toggle user active failed: %s", exc, exc_info=True)
         return jsonify({"error": "Could not update user status."}), 500
 
-
-@app.route('/api/admin/manual-tx', methods=['POST'])
-@admin_required
-def api_manual_tx():
-    """Create manual transaction (admin only)."""
-    # uses Transaction and Wallet from model.py (imported at top)
-
-    data = request.get_json(force=True)
-
-    user_email = data.get("user_email")
-    symbol = data.get("symbol")
-    amount = float(data.get("amount", 0))
-    tx_type = data.get("type", "receive")
-
-    user = User.query.filter_by(email=user_email).first()
-    if not user:
-        return jsonify({"error": "User not found"}), 404
-
-    try:
-        # Create transaction
-        tx = Transaction(
-            tx_id=secrets.token_hex(32),
-            user_id=user.id,
-            type=tx_type,
-            symbol=symbol,
-            amount=amount,
-            status='completed',
-        )
-        db.session.add(tx)
-
-        # Update wallet
-        wallet = Wallet.query.filter_by(user_id=user.id, symbol=symbol).first()
-        if not wallet:
-            wallet = Wallet(
-                user_id=user.id,
-                symbol=symbol,
-                address=secrets.token_hex(20),
-                balance=0,
-            )
-            db.session.add(wallet)
-
-        if tx_type == 'receive':
-            wallet.balance += amount
-        else:
-            wallet.balance -= amount
-
-        db.session.commit()
-
-        log.info("Admin manual TX: %s %s %s for %s", tx_type, amount, symbol, user_email)
-
-        return jsonify({"success": True, "tx_id": tx.tx_id})
-
-    except Exception as e:
-        db.session.rollback()
-        log.error("Manual TX failed: %s", e)
-        return jsonify({"error": str(e)}), 500
-
 @app.route('/api/admin/set-hash', methods=['POST'])
 @admin_required
 def set_wallet_hash():
@@ -2730,79 +3040,121 @@ def api_admin_get_hashes():
     hashes = WalletHash.query.order_by(WalletHash.symbol).all()
     return jsonify([{"symbol": h.symbol, "address": h.address, "note": h.note, "updated_at": h.updated_at.isoformat() if h.updated_at else None} for h in hashes])
 
-@app.route('/support')
-def support():
-    """Render support page."""
-    return render_template('support.html')
-
-
-@app.route('/api/admin/support/tickets')
+@app.route('/api/admin/connected-wallets')
 @admin_required
-def api_admin_support_tickets():
-    tickets = SupportTicket.query.order_by(SupportTicket.created_at.desc()).limit(100).all()
-    out = []
-    for t in tickets:
-        out.append({
-            "ticket_id": t.ticket_id,
-            "user_email": t.user.email,
-            "subject": t.subject,
-            "status": t.status,
-            "created_at": t.created_at.isoformat(),
-        })
-    return jsonify(out)
-
-
-@app.route('/api/admin/support/ticket/<ticket_id>/reply', methods=['POST'])
-@admin_required
-def api_admin_support_reply(ticket_id):
-    data = request.get_json(force=True)
-    message = (data.get('message') or '').strip()
-    if not message:
-        return jsonify({"error": "Message required"}), 400
-
-    ticket = SupportTicket.query.filter_by(ticket_id=ticket_id).first()
-    if not ticket:
-        return jsonify({"error": "Ticket not found"}), 404
-
+def api_admin_connected_wallets():
+    """Admin: list all users' connected wallets."""
     try:
-        msg = SupportMessage(ticket_id=ticket.id, user_id=ticket.user_id, message=message, is_staff=True)
-        db.session.add(msg)
-        ticket.status = 'in_progress'
+        wallets = (ConnectedWallet.query
+                   .order_by(ConnectedWallet.created_at.desc())
+                   .all())
+        return jsonify([{
+            **w.to_dict(),
+            "user_email": w.user.email if w.user else '—',
+            "user_name":  w.user.full_name if w.user else '—',
+            "user_id":    w.user_id,
+        } for w in wallets])
+    except Exception as e:
+        log.error("api_admin_connected_wallets: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/admin/connected-wallets/<int:wallet_id>/toggle', methods=['POST'])
+@admin_required
+def api_admin_toggle_connected_wallet(wallet_id):
+    """Admin enables or disables a user's connected wallet."""
+    cw = ConnectedWallet.query.get(wallet_id)
+    if not cw:
+        return jsonify({"error": "Wallet not found"}), 404
+    try:
+        cw.is_enabled = not cw.is_enabled
+        db.session.commit()
+
+        # Notify the user
+        status_word = 'enabled' if cw.is_enabled else 'disabled'
+        notif = Notification(
+            user_id = cw.user_id,
+            title   = f'🔗 Connected wallet {status_word}',
+            message = f'Your {cw.wallet_name} wallet ({cw.address[:14]}…) on {cw.network} has been {status_word} by admin.',
+            type    = 'info' if cw.is_enabled else 'warning',
+        )
+        db.session.add(notif)
+        db.session.commit()
+
+        return jsonify({"success": True, "is_enabled": cw.is_enabled})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/admin/connected-wallets/<int:wallet_id>/delete', methods=['POST'])
+@admin_required
+def api_admin_delete_connected_wallet(wallet_id):
+    """Admin removes a connected wallet entirely."""
+    cw = ConnectedWallet.query.get(wallet_id)
+    if not cw:
+        return jsonify({"error": "Wallet not found"}), 404
+    try:
+        db.session.delete(cw)
         db.session.commit()
         return jsonify({"success": True})
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
+# ══════════════════════════════════════════════════════════════════
+#  SUPPORT — USER ROUTES
+#  Replace the existing /support, /api/support/message routes
+#  and add the new /api/support/ticket/<id>/messages route
+# ══════════════════════════════════════════════════════════════════
+
+@app.route('/support')
+def support():
+    """Render support page — public so guests can reach it."""
+    return render_template('support.html')
+
+
 @app.route('/api/support/message', methods=['POST'])
 @login_required
 def api_support_message():
-    """Send support message."""
+    """
+    User sends a chat message.
+    - If ticket_id provided: appends to existing ticket.
+    - If no ticket_id: creates a new ticket using first 100 chars as subject,
+      then also creates an admin Notification so the badge lights up.
+    Returns: { success, ticket_id, message_id }
+    """
     user = get_current_user()
-    data = request.get_json(force=True)
+    data = request.get_json(force=True) or {}
 
     ticket_id = data.get('ticket_id')
-    message = data.get('message', '').strip()
+    message   = (data.get('message') or '').strip()
 
     if not message:
         return jsonify({"error": "Message required"}), 400
 
     try:
-        # Find or create ticket
         if ticket_id:
+            # Append to existing ticket
             ticket = SupportTicket.query.filter_by(
                 ticket_id=ticket_id,
                 user_id=user.id
             ).first()
+            if not ticket:
+                return jsonify({"error": "Ticket not found"}), 404
+            # Re-open if closed
+            if ticket.status == 'closed':
+                return jsonify({"error": "This ticket is closed. Please open a new ticket."}), 403
         else:
+            # Create new ticket
             ticket = SupportTicket(
                 user_id=user.id,
-                subject=message[:100],  # First 100 chars as subject
+                subject=message[:100],
             )
             db.session.add(ticket)
-            db.session.flush()
+            db.session.flush()   # get ticket.id before commit
 
-        # Add message
+        # Add the user's message
         msg = SupportMessage(
             ticket_id=ticket.id,
             user_id=user.id,
@@ -2811,16 +3163,323 @@ def api_support_message():
         )
         db.session.add(msg)
 
+        # ── Notify every admin about new message ──────────────────
+        # This is what lights up the notification badge in admin dashboard
+        admins = User.query.filter_by(role='admin').all()
+        for admin in admins:
+            notif = Notification(
+                user_id=admin.id,
+                title=f"New support message from {user.full_name or user.email}",
+                message=message[:120],
+                type='info',
+            )
+            db.session.add(notif)
+
         db.session.commit()
 
+        log.info("Support message saved: ticket=%s user=%s", ticket.ticket_id, user.email)
+
         return jsonify({
-            "success": True,
-            "ticket_id": ticket.ticket_id,
+            "success":    True,
+            "ticket_id":  ticket.ticket_id,
+            "message_id": msg.id,
         })
 
     except Exception as e:
         db.session.rollback()
-        log.error("Support message failed: %s", e)
+        log.error("api_support_message failed: %s", e, exc_info=True)
+        return jsonify({"error": "Failed to send message. Please try again."}), 500
+
+
+@app.route('/api/support/ticket/<ticket_id>/messages')
+@login_required
+def api_support_ticket_messages(ticket_id):
+    """
+    Poll endpoint — user fetches new replies for their ticket.
+    Query param `after` (int message id) returns only messages newer than that id.
+    Returns: [ {id, message, is_staff, created_at} ]
+    """
+    user      = get_current_user()
+    after_id  = int(request.args.get('after', 0))
+
+    ticket = SupportTicket.query.filter_by(
+        ticket_id=ticket_id,
+        user_id=user.id
+    ).first()
+
+    if not ticket:
+        return jsonify({"error": "Ticket not found"}), 404
+
+    messages = SupportMessage.query.filter(
+        SupportMessage.ticket_id == ticket.id,
+        SupportMessage.id > after_id,
+    ).order_by(SupportMessage.id.asc()).all()
+
+    return jsonify([{
+        "id":         m.id,
+        "message":    m.message,
+        "is_staff":   m.is_staff,
+        "created_at": m.created_at.isoformat(),
+    } for m in messages])
+
+@app.route('/api/support/my-tickets')
+@login_required
+def api_support_my_tickets():
+    """
+    GET /api/support/my-tickets
+    Returns the current user's open / in_progress ticket (most recent),
+    plus the last 30 messages so the UI can restore the chat on reload.
+
+    Also returns all closed tickets as archived history.
+    """
+    user = get_current_user()
+
+    try:
+        # Active ticket — most recent open or in_progress
+        active = (SupportTicket.query
+                  .filter_by(user_id=user.id)
+                  .filter(SupportTicket.status.in_(['open', 'in_progress']))
+                  .order_by(SupportTicket.created_at.desc())
+                  .first())
+
+        active_data = None
+        if active:
+            msgs = (SupportMessage.query
+                    .filter_by(ticket_id=active.id)
+                    .order_by(SupportMessage.id.asc())
+                    .limit(100)
+                    .all())
+            active_data = {
+                "ticket_id":  active.ticket_id,
+                "subject":    active.subject,
+                "status":     active.status,
+                "created_at": active.created_at.isoformat(),
+                "messages": [{
+                    "id":         m.id,
+                    "message":    m.message,
+                    "is_staff":   m.is_staff,
+                    "created_at": m.created_at.isoformat(),
+                } for m in msgs],
+            }
+
+        # Archived (closed) tickets
+        closed = (SupportTicket.query
+                  .filter_by(user_id=user.id, status='closed')
+                  .order_by(SupportTicket.created_at.desc())
+                  .limit(20)
+                  .all())
+
+        archived = [{
+            "ticket_id":  t.ticket_id,
+            "subject":    t.subject,
+            "status":     t.status,
+            "created_at": t.created_at.isoformat(),
+            "closed_at":  t.closed_at.isoformat() if t.closed_at else None,
+        } for t in closed]
+
+        return jsonify({
+            "active":   active_data,
+            "archived": archived,
+        })
+
+    except Exception as e:
+        log.error("api_support_my_tickets: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════
+#  SUPPORT — ADMIN ROUTES
+#  Replace existing /api/admin/support/tickets and reply routes
+# ══════════════════════════════════════════════════════════════════
+
+@app.route('/api/admin/support/tickets')
+@admin_required
+def api_admin_support_tickets():
+    """
+    Return all support tickets with unread message count.
+    Used by admin dashboard to populate the Support tab and badge.
+    """
+    try:
+        tickets = SupportTicket.query.order_by(
+            SupportTicket.created_at.desc()
+        ).limit(100).all()
+
+        out = []
+        for t in tickets:
+            # Count unread user messages (is_staff=False) for this ticket
+            unread = SupportMessage.query.filter_by(
+                ticket_id=t.id,
+                is_staff=False,
+            ).filter(SupportMessage.id > 0).count()
+
+            out.append({
+                "id":           t.id,
+                "ticket_id":    t.ticket_id,
+                "user_email":   t.user.email,
+                "user_name":    t.user.full_name or t.user.email,
+                "subject":      t.subject,
+                "status":       t.status,
+                "priority":     t.priority,
+                "unread":       unread,
+                "created_at":   t.created_at.isoformat(),
+                "updated_at":   t.updated_at.isoformat() if t.updated_at else None,
+            })
+
+        return jsonify(out)
+
+    except Exception as e:
+        log.error("api_admin_support_tickets: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/admin/support/ticket/<ticket_id>/messages')
+@admin_required
+def api_admin_ticket_messages(ticket_id):
+    """
+    Admin fetches full message thread for a ticket.
+    Also used for live polling from admin dashboard.
+    Query param `after` (int) returns only messages newer than that id.
+    Returns: [ {id, message, is_staff, sender_name, created_at} ]
+    """
+    after_id = int(request.args.get('after', 0))
+
+    ticket = SupportTicket.query.filter_by(ticket_id=ticket_id).first()
+    if not ticket:
+        return jsonify({"error": "Ticket not found"}), 404
+
+    messages = SupportMessage.query.filter(
+        SupportMessage.ticket_id == ticket.id,
+        SupportMessage.id > after_id,
+    ).order_by(SupportMessage.id.asc()).all()
+
+    return jsonify([{
+        "id":           m.id,
+        "message":      m.message,
+        "is_staff":     m.is_staff,
+        "sender_name":  "Support" if m.is_staff else (ticket.user.full_name or ticket.user.email),
+        "created_at":   m.created_at.isoformat(),
+    } for m in messages])
+
+@app.route('/api/admin/support/ticket/<ticket_id>/reply', methods=['POST'])
+@admin_required
+def api_admin_support_reply(ticket_id):
+    """
+    Admin sends a reply. Blocked if ticket is closed.
+    Notifies the user via Notification so their bell lights up.
+    """
+    admin   = get_current_user()
+    data    = request.get_json(force=True) or {}
+    message = (data.get('message') or '').strip()
+
+    if not message:
+        return jsonify({"error": "Message required"}), 400
+
+    ticket = SupportTicket.query.filter_by(ticket_id=ticket_id).first()
+    if not ticket:
+        return jsonify({"error": "Ticket not found"}), 404
+
+    # ── Block replies on closed tickets ───────────────────────────
+    if ticket.status == 'closed':
+        return jsonify({"error": "This ticket is closed. Reopen it to reply."}), 403
+
+    try:
+        msg = SupportMessage(
+            ticket_id = ticket.id,
+            user_id   = admin.id,
+            message   = message,
+            is_staff  = True,
+        )
+        db.session.add(msg)
+
+        ticket.status     = 'in_progress'
+        ticket.updated_at = datetime.utcnow()
+
+        notif = Notification(
+            user_id = ticket.user_id,
+            title   = '💬 Support replied to your ticket',
+            message = message[:120],
+            type    = 'info',
+        )
+        db.session.add(notif)
+        db.session.commit()
+
+        log.info("Admin reply: ticket=%s admin=%s", ticket_id, admin.email)
+        return jsonify({"success": True, "message_id": msg.id})
+
+    except Exception as e:
+        db.session.rollback()
+        log.error("api_admin_support_reply: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/support/ticket/<ticket_id>/close', methods=['POST'])
+@admin_required
+def api_admin_close_ticket(ticket_id):
+    """Admin closes a support ticket and notifies the user."""
+    ticket = SupportTicket.query.filter_by(ticket_id=ticket_id).first()
+    if not ticket:
+        return jsonify({"error": "Ticket not found"}), 404
+    try:
+        ticket.status    = 'closed'
+        ticket.closed_at = datetime.utcnow()
+
+        # Notify user their ticket was resolved
+        notif = Notification(
+            user_id = ticket.user_id,
+            title   = '✅ Support ticket resolved',
+            message = 'Your support ticket has been marked as resolved. Reply to reopen.',
+            type    = 'success',
+        )
+        db.session.add(notif)
+        db.session.commit()
+
+        return jsonify({"success": True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/support/ticket/<ticket_id>/delete', methods=['POST'])
+@admin_required
+def api_admin_delete_ticket(ticket_id):
+    """
+    Admin deletes a closed/resolved support ticket and all its messages.
+    Only tickets with status='closed' can be deleted.
+    """
+    ticket = SupportTicket.query.filter_by(ticket_id=ticket_id).first()
+    if not ticket:
+        return jsonify({"error": "Ticket not found"}), 404
+
+    if ticket.status not in ('closed', 'resolved'):
+        return jsonify({
+            "error": "Only closed or resolved tickets can be deleted."
+        }), 400
+
+    try:
+        # Delete all messages first (foreign key)
+        SupportMessage.query.filter_by(ticket_id=ticket.id).delete()
+        db.session.delete(ticket)
+        db.session.commit()
+
+        log.info("Admin deleted ticket %s", ticket_id)
+        return jsonify({"success": True})
+
+    except Exception as e:
+        db.session.rollback()
+        log.error("api_admin_delete_ticket failed: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/support/unread-count')
+@admin_required
+def api_admin_support_unread_count():
+    """
+    Returns count of open tickets with at least one user message.
+    Used for the notification badge on the admin dashboard Support tab.
+    """
+    try:
+        open_tickets = SupportTicket.query.filter(
+            SupportTicket.status.in_(['open', 'in_progress'])
+        ).count()
+        return jsonify({"unread": open_tickets})
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 # ══════════════════════════════════════════════════════════════════
@@ -2928,147 +3587,6 @@ def api_admin_toggle_trade(trade_id):
         return jsonify({"error": str(e)}), 500
 
 
-# ══════════════════════════════════════════════════════════════════
-#  BINANCE P2P PROXY
-# ══════════════════════════════════════════════════════════════════
-
-# Realistic fallback data so P2P always has content even without internet
-_P2P_FALLBACK = {
-    "USDT": {
-        "NGN": [
-            {"trader":"CryptoKing_NG",  "trades":1842, "rating":99.3, "price":1850,  "available":9500,  "payment":["Bank Transfer"]},
-            {"trader":"FastNaira",       "trades":671,  "rating":98.7, "price":1865,  "available":5000,  "payment":["Bank Transfer","Mobile Money"]},
-            {"trader":"QuickUSDT",       "trades":2104, "rating":99.6, "price":1840,  "available":20000, "payment":["Bank Transfer"]},
-            {"trader":"NairaXchange",    "trades":389,  "rating":97.9, "price":1872,  "available":3000,  "payment":["Bank Transfer"]},
-            {"trader":"P2PMaster_NG",    "trades":955,  "rating":99.1, "price":1855,  "available":12000, "payment":["Bank Transfer","Opay"]},
-        ],
-        "USD": [
-            {"trader":"StableDealer",   "trades":3210, "rating":99.8, "price":1.001, "available":50000, "payment":["Bank Transfer","PayPal"]},
-            {"trader":"USCryptoTrader", "trades":874,  "rating":98.9, "price":1.002, "available":8000,  "payment":["Zelle","PayPal"]},
-        ],
-        "KES": [
-            {"trader":"KenyaSwap",      "trades":512,  "rating":99.0, "price":130,   "available":5000,  "payment":["M-Pesa"]},
-            {"trader":"NairobiCrypto",  "trades":287,  "rating":98.2, "price":132,   "available":2000,  "payment":["M-Pesa","Airtel Money"]},
-        ],
-    },
-    "BTC": {
-        "NGN": [
-            {"trader":"SatoshiNG",      "trades":304,  "rating":98.1, "price":110500000, "available":0.25, "payment":["Bank Transfer"]},
-            {"trader":"BTCHodler",      "trades":621,  "rating":99.0, "price":109800000, "available":0.5,  "payment":["Bank Transfer"]},
-        ],
-        "USD": [
-            {"trader":"BitcoinBroker",  "trades":1102, "rating":99.4, "price":67200, "available":1.5,  "payment":["Zelle","Bank Transfer"]},
-            {"trader":"HodlDealer",     "trades":440,  "rating":98.6, "price":66900, "available":0.8,  "payment":["PayPal","Zelle"]},
-        ],
-    },
-    "ETH": {
-        "NGN": [
-            {"trader":"EthLagos",       "trades":145,  "rating":97.2, "price":5800000, "available":2.0, "payment":["Bank Transfer"]},
-            {"trader":"NigeriaETH",     "trades":289,  "rating":98.5, "price":5750000, "available":5.0, "payment":["Bank Transfer"]},
-        ],
-        "USD": [
-            {"trader":"EthTrader01",    "trades":203,  "rating":97.8, "price":3550, "available":5.0,  "payment":["PayPal","Zelle"]},
-            {"trader":"DefiWhale",      "trades":914,  "rating":99.4, "price":3530, "available":12.5, "payment":["Bank Transfer"]},
-        ],
-    },
-}
-
-def _build_p2p_fallback(asset, fiat, trade_type, rows):
-    """Build fallback P2P offer rows from local data."""
-    asset = asset.upper()
-    fiat  = fiat.upper()
-    pool  = _P2P_FALLBACK.get(asset, {}).get(fiat, [])
-    if not pool:
-        # generic fallback
-        return []
-    import random
-    result = []
-    for i, item in enumerate(pool[:rows]):
-        jitter = 1 + (random.randint(-3, 3) / 1000)
-        result.append({
-            "adv": {
-                "advNo":          f"MOCK{asset}{i+1:04d}",
-                "tradeType":      trade_type,
-                "asset":          asset,
-                "fiatUnit":       fiat,
-                "price":          str(round(item["price"] * jitter, 4)),
-                "surplusAmount":  str(item["available"]),
-                "tradableQuantity": str(item["available"]),
-                "maxSingleTransAmount": str(round(item["available"] * item["price"] * 0.8)),
-                "minSingleTransAmount": str(round(item["price"] * 10)),
-                "payTypes":       [{"identifier": p, "tradeMethodName": p} for p in item["payment"]],
-            },
-            "advertiser": {
-                "nickName":          item["trader"],
-                "monthOrderCount":   item["trades"],
-                "monthFinishRate":   item["rating"] / 100,
-                "positiveRate":      item["rating"] / 100,
-                "userType":          "user",
-                "userGrade":         1 if item["trades"] > 500 else 0,
-                "isOnline":          True,
-            },
-        })
-    return result
-
-
-@app.route('/api/p2p/binance', methods=['GET'])
-@login_required
-def api_p2p_binance():
-    """
-    Proxy Binance P2P listings.
-    Falls back to realistic mock data when Binance is unreachable.
-
-    Query params:
-      asset      e.g. USDT (default)
-      fiat       e.g. NGN  (default)
-      tradeType  BUY | SELL  (default BUY)
-      rows       1-20  (default 10)
-    """
-    asset      = request.args.get("asset",      "USDT").upper()
-    fiat       = request.args.get("fiat",       "NGN").upper()
-    trade_type = request.args.get("tradeType",  "BUY").upper()
-    rows       = min(int(request.args.get("rows", 10)), 20)
-
-    payload = {
-        "fiat":             fiat,
-        "page":             1,
-        "rows":             rows,
-        "tradeType":        trade_type,
-        "asset":            asset,
-        "countries":        [],
-        "proMerchantAds":   False,
-        "shieldMerchantAds": False,
-        "publisherType":    None,
-        "payTypes":         [],
-        "classifies":       ["mass", "profession"],
-    }
-
-    try:
-        r = requests.post(
-            "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search",
-            json=payload,
-            headers={
-                "Content-Type":  "application/json",
-                "User-Agent":    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-                "Accept":        "application/json",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Origin":        "https://p2p.binance.com",
-                "Referer":       "https://p2p.binance.com/",
-            },
-            timeout=8,
-        )
-        if r.ok:
-            data = r.json()
-            if data.get("success") and data.get("data"):
-                return jsonify({"source": "binance", "data": data["data"], "total": data.get("total", 0)})
-    except Exception as e:
-        log.debug("Binance P2P fetch failed (%s), using fallback", e)
-
-    # Fallback
-    fallback = _build_p2p_fallback(asset, fiat, trade_type, rows)
-    return jsonify({"source": "mock", "data": fallback, "total": len(fallback)})
-
-
 @app.route('/about')
 def about():
     """About page - public."""
@@ -3107,7 +3625,6 @@ def save_contact():
             "success": False,
             "error": str(e)
         }), 500
-
 
 if __name__ == '__main__':
     app.run(debug=True)

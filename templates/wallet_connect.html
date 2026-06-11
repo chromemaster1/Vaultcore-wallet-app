@@ -1,0 +1,390 @@
+{% extends "base.html" %}
+{% block title %}Connect Wallet — VaultCore{% endblock %}
+
+{% block content %}
+<section class="wc-page">
+
+  <!-- ── Header ── -->
+  <div class="wc-header">
+    <div>
+      <h2 class="wc-title">Connect External Wallet</h2>
+      <p class="wc-sub">Link your existing wallets to send and receive across networks.</p>
+    </div>
+  </div>
+
+  <!-- ── Wallet type picker ── -->
+  <div class="wc-grid" id="wcPickerGrid">
+
+    <div class="wc-wallet-card" onclick="openConnectModal('metamask')">
+      <div class="wc-wallet-icon" style="background:rgba(245,130,32,.12);border-color:rgba(245,130,32,.25)">
+        <svg viewBox="0 0 35 33" width="28" height="28" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M32.96 1L19.38 10.67l2.52-5.97L32.96 1z" fill="#E2761B" stroke="#E2761B" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M2.04 1l13.46 9.76-2.4-5.97L2.04 1z" fill="#E4761B" stroke="#E4761B" stroke-width=".25" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="wc-wallet-name">MetaMask</div>
+      <div class="wc-wallet-desc">EVM compatible</div>
+    </div>
+
+    <div class="wc-wallet-card" onclick="openConnectModal('trustwallet')">
+      <div class="wc-wallet-icon" style="background:rgba(51,117,187,.12);border-color:rgba(51,117,187,.25)">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none">
+          <path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.35C17.25 22.15 21 17.25 21 12V7L12 2z" fill="#3375BB" opacity=".9"/>
+          <path d="M9 12l2 2 4-4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="wc-wallet-name">Trust Wallet</div>
+      <div class="wc-wallet-desc">Multi-chain</div>
+    </div>
+
+    <div class="wc-wallet-card" onclick="openConnectModal('coinbase')">
+      <div class="wc-wallet-icon" style="background:rgba(0,82,255,.10);border-color:rgba(0,82,255,.2)">
+        <svg viewBox="0 0 28 28" width="26" height="26" fill="none">
+          <rect width="28" height="28" rx="6" fill="#0052FF"/>
+          <circle cx="14" cy="14" r="8" fill="white"/>
+          <rect x="10" y="12" width="8" height="4" rx="2" fill="#0052FF"/>
+        </svg>
+      </div>
+      <div class="wc-wallet-name">Coinbase Wallet</div>
+      <div class="wc-wallet-desc">Self-custody</div>
+    </div>
+
+    <div class="wc-wallet-card" onclick="openConnectModal('phantom')">
+      <div class="wc-wallet-icon" style="background:rgba(171,108,255,.12);border-color:rgba(171,108,255,.25)">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none">
+          <circle cx="12" cy="12" r="10" fill="#AB6CFF"/>
+          <path d="M7 12.5c0-2.76 2.24-5 5-5h.5c2.49 0 4.5 2.01 4.5 4.5S15 16.5 12.5 16.5H11c-.55 0-1-.45-1-1s.45-1 1-1h1.5c1.38 0 2.5-1.12 2.5-2.5S14.38 9.5 13 9.5H12c-1.65 0-3 1.35-3 3v2c0 .55-.45 1-1 1s-1-.45-1-1v-2z" fill="white"/>
+        </svg>
+      </div>
+      <div class="wc-wallet-name">Phantom</div>
+      <div class="wc-wallet-desc">Solana native</div>
+    </div>
+
+    <div class="wc-wallet-card" onclick="openConnectModal('ledger')">
+      <div class="wc-wallet-icon" style="background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.12)">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none">
+          <rect x="3" y="6" width="18" height="12" rx="2" stroke="#e8eaf0" stroke-width="1.8"/>
+          <path d="M3 10h18" stroke="#e8eaf0" stroke-width="1.5"/>
+          <circle cx="8" cy="14" r="1.2" fill="#e8eaf0"/>
+        </svg>
+      </div>
+      <div class="wc-wallet-name">Ledger</div>
+      <div class="wc-wallet-desc">Hardware wallet</div>
+    </div>
+
+    <div class="wc-wallet-card" onclick="openConnectModal('manual')">
+      <div class="wc-wallet-icon" style="background:rgba(108,99,255,.12);border-color:rgba(108,99,255,.25)">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#6c63ff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="5" width="20" height="14" rx="2"/>
+          <line x1="2" y1="10" x2="22" y2="10"/>
+          <circle cx="17" cy="15" r="1" fill="#6c63ff"/>
+        </svg>
+      </div>
+      <div class="wc-wallet-name">Manual Address</div>
+      <div class="wc-wallet-desc">Paste any address</div>
+    </div>
+
+  </div>
+
+  <!-- ── Connected wallets list ── -->
+  <div class="wc-connected-section">
+    <div class="wc-section-header">
+      <h3>Connected Wallets</h3>
+      <span class="wc-count" id="wcCount">{{ connected_wallets|length }}</span>
+    </div>
+
+    <div id="wcConnectedList">
+      {% if connected_wallets %}
+        {% for w in connected_wallets %}
+        <div class="wc-connected-card {% if not w.is_enabled %}wc-card-disabled{% endif %}" id="wc-card-{{ w.id }}">
+          <div class="wc-connected-icon">
+            {% if w.wallet_type == 'metamask' %}🦊
+            {% elif w.wallet_type == 'trustwallet' %}🛡
+            {% elif w.wallet_type == 'coinbase' %}🔵
+            {% elif w.wallet_type == 'phantom' %}👻
+            {% elif w.wallet_type == 'ledger' %}🔐
+            {% else %}💳{% endif %}
+          </div>
+          <div class="wc-connected-info">
+            <div class="wc-connected-name">
+              {{ w.wallet_name }}
+              {% if w.label %}<span class="wc-label-tag">{{ w.label }}</span>{% endif %}
+            </div>
+            <div class="wc-connected-address">{{ w.address[:14] }}…{{ w.address[-6:] }}</div>
+            <div class="wc-connected-meta">{{ w.network }} · Connected {{ w.created_at.strftime('%b %d, %Y') }}</div>
+          </div>
+          <div class="wc-connected-actions">
+            {% if w.is_enabled %}
+              <span class="wc-status-badge wc-status-active">● Active</span>
+            {% else %}
+              <span class="wc-status-badge wc-status-disabled">● Disabled by admin</span>
+            {% endif %}
+            <button class="wc-remove-btn" onclick="removeWallet({{ w.id }}, this)" title="Remove">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            </button>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div class="wc-empty" id="wcEmpty">
+          <div class="wc-empty-icon">🔗</div>
+          <div class="wc-empty-title">No wallets connected yet</div>
+          <div class="wc-empty-sub">Choose a wallet above to get started</div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+</section>
+
+
+<!-- ══ Connect Modal ══ -->
+<div class="wc-modal-overlay" id="wcModal">
+  <div class="wc-modal">
+
+    <div class="wc-modal-head">
+      <div class="wc-modal-title-row">
+        <span class="wc-modal-icon" id="wcModalIcon">🔗</span>
+        <span class="wc-modal-title" id="wcModalTitle">Connect Wallet</span>
+      </div>
+      <button class="adm-btn-ghost" onclick="closeWcModal()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <div class="wc-modal-body">
+
+      <!-- Network selector -->
+      <div class="wc-form-group">
+        <label>Network / Blockchain</label>
+        <div class="wc-network-grid" id="wcNetworkGrid">
+          {% set networks = [('ETH','Ethereum','#627eea'),('BTC','Bitcoin','#f7931a'),('BNB','BNB Chain','#f0b90b'),('SOL','Solana','#9945ff'),('USDT','Tether USDT','#26a17b'),('MATIC','Polygon','#8247e5'),('AVAX','Avalanche','#e84142'),('TRX','Tron','#ef0027'),('XRP','XRP','#00aae4'),('ADA','Cardano','#0d1e2d')] %}
+          {% for sym, name, color in networks %}
+          <button class="wc-net-btn" data-network="{{ sym }}" onclick="selectNetwork('{{ sym }}', this)"
+                  style="--net-color:{{ color }}">
+            <span class="wc-net-dot" style="background:{{ color }}"></span>{{ sym }}
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Wallet address -->
+      <div class="wc-form-group">
+        <label>Wallet Address</label>
+        <input id="wcAddress" class="adm-input wc-address-input"
+               placeholder="0x… or bc1… or your wallet address"
+               autocomplete="off" spellcheck="false" />
+        <div class="wc-address-hint">Paste your public wallet address. Never share your private key.</div>
+      </div>
+
+      <!-- Optional label -->
+      <div class="wc-form-group">
+        <label>Label <span style="color:var(--text-3);font-weight:400">(optional)</span></label>
+        <input id="wcLabel" class="adm-input" placeholder="e.g. My trading wallet, Cold storage…" />
+      </div>
+
+      <!-- Security notice -->
+      <div class="wc-security-notice">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        VaultCore only stores your public address. Your private keys stay in your wallet.
+      </div>
+
+    </div>
+
+    <div class="wc-modal-foot">
+      <button class="adm-btn-ghost" onclick="closeWcModal()">Cancel</button>
+      <button class="wc-connect-btn" id="wcConnectBtn" onclick="submitConnect()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        Connect Wallet
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ══ JavaScript ══ -->
+<script>
+let _wcWalletType   = '';
+let _wcNetwork      = '';
+
+const WALLET_ICONS = {
+  metamask:     '🦊',
+  trustwallet:  '🛡',
+  coinbase:     '🔵',
+  phantom:      '👻',
+  ledger:       '🔐',
+  manual:       '💳',
+};
+
+const WALLET_LABELS = {
+  metamask:     'MetaMask',
+  trustwallet:  'Trust Wallet',
+  coinbase:     'Coinbase Wallet',
+  phantom:      'Phantom',
+  ledger:       'Ledger',
+  manual:       'Manual Address',
+};
+
+// ── Open modal for a wallet type ──────────────────────────────────
+function openConnectModal(type) {
+  _wcWalletType = type;
+  _wcNetwork    = '';
+
+  document.getElementById('wcModalIcon').textContent  = WALLET_ICONS[type] || '🔗';
+  document.getElementById('wcModalTitle').textContent = `Connect ${WALLET_LABELS[type] || type}`;
+  document.getElementById('wcAddress').value = '';
+  document.getElementById('wcLabel').value   = '';
+
+  // Clear network selection
+  document.querySelectorAll('.wc-net-btn').forEach(b => b.classList.remove('active'));
+
+  document.getElementById('wcModal').classList.add('open');
+}
+
+function closeWcModal() {
+  document.getElementById('wcModal').classList.remove('open');
+  _wcWalletType = '';
+  _wcNetwork    = '';
+}
+
+// Close on overlay click
+document.getElementById('wcModal').addEventListener('click', e => {
+  if (e.target.id === 'wcModal') closeWcModal();
+});
+
+// ── Network selection ─────────────────────────────────────────────
+function selectNetwork(network, btn) {
+  _wcNetwork = network;
+  document.querySelectorAll('.wc-net-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+// ── Submit connect ────────────────────────────────────────────────
+async function submitConnect() {
+  const address = document.getElementById('wcAddress').value.trim();
+  const label   = document.getElementById('wcLabel').value.trim();
+  const btn     = document.getElementById('wcConnectBtn');
+
+  if (!_wcNetwork) { showWcError('Please select a network'); return; }
+  if (!address)    { showWcError('Please enter your wallet address'); return; }
+  if (address.length < 10) { showWcError('Address looks too short'); return; }
+
+  btn.disabled    = true;
+  btn.textContent = 'Connecting…';
+
+  try {
+    const res  = await fetch('/api/wallet-connect/add', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        wallet_type: _wcWalletType,
+        address,
+        network: _wcNetwork,
+        label,
+      }),
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      closeWcModal();
+      appendConnectedCard(data.wallet);
+      updateCount(1);
+      showWcToast(`✅ ${WALLET_LABELS[_wcWalletType]||_wcWalletType} connected on ${_wcNetwork}`);
+    } else {
+      showWcError(data.error || 'Could not connect wallet');
+    }
+  } catch(e) {
+    showWcError('Network error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> Connect Wallet`;
+  }
+}
+
+// ── Append new card to DOM ────────────────────────────────────────
+function appendConnectedCard(w) {
+  const list = document.getElementById('wcConnectedList');
+  const empty = document.getElementById('wcEmpty');
+  if (empty) empty.remove();
+
+  const icon = WALLET_ICONS[w.wallet_type] || '💳';
+  const short = w.address.slice(0,14) + '…' + w.address.slice(-6);
+  const date  = new Date(w.created_at).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'});
+
+  const div = document.createElement('div');
+  div.className = 'wc-connected-card';
+  div.id = `wc-card-${w.id}`;
+  div.innerHTML = `
+    <div class="wc-connected-icon">${icon}</div>
+    <div class="wc-connected-info">
+      <div class="wc-connected-name">
+        ${w.wallet_name}
+        ${w.label ? `<span class="wc-label-tag">${w.label}</span>` : ''}
+      </div>
+      <div class="wc-connected-address">${short}</div>
+      <div class="wc-connected-meta">${w.network} · Connected ${date}</div>
+    </div>
+    <div class="wc-connected-actions">
+      <span class="wc-status-badge wc-status-active">● Active</span>
+      <button class="wc-remove-btn" onclick="removeWallet(${w.id}, this)" title="Remove">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      </button>
+    </div>`;
+  list.prepend(div);
+}
+
+// ── Remove wallet ─────────────────────────────────────────────────
+async function removeWallet(walletId, btn) {
+  if (!confirm('Remove this connected wallet?')) return;
+  if (btn) btn.disabled = true;
+
+  try {
+    const res  = await fetch(`/api/wallet-connect/${walletId}/remove`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      const card = document.getElementById(`wc-card-${walletId}`);
+      if (card) {
+        card.style.opacity    = '0';
+        card.style.transition = 'opacity .3s';
+        setTimeout(() => { card.remove(); updateCount(-1); }, 300);
+      }
+      showWcToast('Wallet removed');
+    } else {
+      showWcToast(data.error || 'Could not remove wallet', 'error');
+      if (btn) btn.disabled = false;
+    }
+  } catch(e) {
+    showWcToast('Network error', 'error');
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────
+function updateCount(delta) {
+  const el = document.getElementById('wcCount');
+  if (el) el.textContent = Math.max(0, parseInt(el.textContent||'0') + delta);
+}
+
+function showWcError(msg) {
+  const existing = document.getElementById('wcErrorMsg');
+  if (existing) existing.remove();
+  const div = document.createElement('div');
+  div.id = 'wcErrorMsg';
+  div.style.cssText = 'color:#ef4444;font-size:12px;margin-top:-8px;padding:0 20px 12px';
+  div.textContent = '⚠ ' + msg;
+  document.querySelector('.wc-modal-foot').before(div);
+  setTimeout(() => div.remove(), 3500);
+}
+
+function showWcToast(msg, type = 'success') {
+  const c = { success:'#4ade80', error:'#ef4444', info:'#6c63ff' };
+  const t = document.createElement('div');
+  t.style.cssText = `position:fixed;bottom:24px;right:24px;z-index:9999;background:var(--surface-2,#1c1f2e);border:1px solid ${c[type]};border-left:3px solid ${c[type]};border-radius:8px;padding:12px 18px;font-size:13px;color:var(--text-1,#e8eaf0);box-shadow:0 8px 24px rgba(0,0,0,.4);max-width:300px;opacity:1;transition:opacity .3s;pointer-events:none`;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(()=>{ t.style.opacity='0'; setTimeout(()=>t.remove(),300); }, 3000);
+}
+</script>
+
+{% endblock %}
+Done
