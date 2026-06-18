@@ -77,6 +77,16 @@
       Trades
       <span class="adm-tab-badge" id="badgeTrades"></span>
     </button>
+    <button class="adm-tab" onclick="showSection('connectedWallets')" id="btnConnectedWallets">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+      Connected Wallets
+      <span class="adm-tab-badge" id="badgeCW"></span>
+    </button>
+    <button class="adm-tab" onclick="showSection('linkedBanks')" id="btnLinkedBanks">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="21" y2="22"/><line x1="6" y1="18" x2="6" y2="11"/><line x1="10" y1="18" x2="10" y2="11"/><line x1="14" y1="18" x2="14" y2="11"/><line x1="18" y1="18" x2="18" y2="11"/><polygon points="12 2 20 7 4 7"/></svg>
+      Linked Banks
+      <span class="adm-tab-badge" id="badgeLB"></span>
+    </button>
   </div>
 
   <!-- ════ PENDING TRANSACTIONS ════ -->
@@ -387,6 +397,34 @@
     </div>
   </div>
 
+  <div class="adm-section" id="sectionConnectedWallets">
+    <div class="adm-section-header">
+      <h2>Connected Wallets</h2>
+      <button class="adm-btn-ghost" onclick="loadConnectedWallets()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        Refresh
+      </button>
+    </div>
+    <div class="adm-table-wrap">
+      <table class="adm-table">
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Wallet</th>
+            <th>Network</th>
+            <th>Address</th>
+            <th>Status</th>
+            <th>Connected</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="cwGrid">
+          <tr><td colspan="7" class="adm-table-loading">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
 </div><!-- /adm-page -->
 
 <!-- Approve/Reject confirm modal (used by admin.js) -->
@@ -409,7 +447,210 @@
   </div>
 </div>
 
+<div class="adm-section" id="sectionLinkedBanks">
+    <div class="adm-section-header">
+      <h2>Linked Banks</h2>
+      <button class="adm-btn-ghost" onclick="loadLinkedBanks()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        Refresh
+      </button>
+    </div>
+    <div class="adm-table-wrap">
+      <table class="adm-table">
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Bank</th>
+            <th>Account</th>
+            <th>Type</th>
+            <th>Country</th>
+            <th>Status</th>
+            <th>Linked</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="lbGrid">
+          <tr><td colspan="8" class="adm-table-loading">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Connected Wallet action modal -->
+<div class="adm-modal-overlay" id="cwActionModal">
+  <div class="adm-modal" style="max-width:440px">
+    <div class="adm-modal-head">
+      <span class="adm-modal-title" id="cwModalTitle">Wallet Action</span>
+      <button class="adm-btn-ghost" onclick="closeCwModal()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="adm-modal-body">
+      <div id="cwModalInfo" style="padding:10px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text-3);margin-bottom:16px"></div>
+      <!-- Send fields -->
+      <div id="cwSendFields">
+        <div class="adm-form-group" style="margin-bottom:12px">
+          <label style="font-size:12px;color:var(--text-3);display:block;margin-bottom:6px">To Address</label>
+          <input id="cwToAddress" class="adm-input" placeholder="Destination wallet address" />
+        </div>
+        <div class="adm-form-row" style="display:flex;gap:10px">
+          <div class="adm-form-group" style="flex:1">
+            <label style="font-size:12px;color:var(--text-3);display:block;margin-bottom:6px">Amount</label>
+            <input id="cwAmount" class="adm-input" type="number" step="any" min="0" placeholder="0.00" />
+          </div>
+          <div class="adm-form-group" style="width:100px">
+            <label style="font-size:12px;color:var(--text-3);display:block;margin-bottom:6px">Asset</label>
+            <select id="cwSymbol" class="adm-input">
+              <option>USDT</option><option>BTC</option><option>ETH</option>
+              <option>BNB</option><option>SOL</option><option>XRP</option>
+              <option>MATIC</option><option>TRX</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <!-- Receive extra field -->
+      <div id="cwReceiveFields" style="display:none">
+        <div class="adm-form-group" style="margin-bottom:12px">
+          <label style="font-size:12px;color:var(--text-3);display:block;margin-bottom:6px">From Address <span style="color:var(--text-3)">(optional)</span></label>
+          <input id="cwFromAddress" class="adm-input" placeholder="Source address (informational)" />
+        </div>
+        <div class="adm-form-row" style="display:flex;gap:10px">
+          <div class="adm-form-group" style="flex:1">
+            <label style="font-size:12px;color:var(--text-3);display:block;margin-bottom:6px">Amount to Credit</label>
+            <input id="cwReceiveAmount" class="adm-input" type="number" step="any" min="0" placeholder="0.00" />
+          </div>
+          <div class="adm-form-group" style="width:100px">
+            <label style="font-size:12px;color:var(--text-3);display:block;margin-bottom:6px">Asset</label>
+            <select id="cwReceiveSymbol" class="adm-input">
+              <option>USDT</option><option>BTC</option><option>ETH</option>
+              <option>BNB</option><option>SOL</option><option>XRP</option>
+              <option>MATIC</option><option>TRX</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="adm-form-group" style="margin-top:12px">
+        <label style="font-size:12px;color:var(--text-3);display:block;margin-bottom:6px">Admin Note <span style="color:var(--text-3)">(shown to user)</span></label>
+        <input id="cwNote" class="adm-input" placeholder="Optional note…" />
+      </div>
+    </div>
+    <div class="adm-modal-foot">
+      <button class="adm-btn-ghost" onclick="closeCwModal()">Cancel</button>
+      <button class="adm-btn-confirm" id="cwModalConfirm" onclick="executeCwAction()">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Linked Bank action modal -->
+<div class="adm-modal-overlay" id="lbActionModal">
+  <div class="adm-modal" style="max-width:440px">
+    <div class="adm-modal-head">
+      <span class="adm-modal-title" id="lbModalTitle">Bank Action</span>
+      <button class="adm-btn-ghost" onclick="closeLbModal()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="adm-modal-body">
+      <div id="lbModalInfo" style="padding:10px 14px;background:var(--surface-2);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text-3);margin-bottom:16px"></div>
+      <div class="adm-form-row" style="display:flex;gap:10px">
+        <div class="adm-form-group" style="flex:1">
+          <label style="font-size:12px;color:var(--text-3);display:block;margin-bottom:6px">Amount</label>
+          <input id="lbAmount" class="adm-input" type="number" step="any" min="0" placeholder="0.00" />
+        </div>
+        <div class="adm-form-group" style="width:100px">
+          <label style="font-size:12px;color:var(--text-3);display:block;margin-bottom:6px">Currency</label>
+          <select id="lbCurrency" class="adm-input">
+            <option>USDT</option><option>USD</option><option>NGN</option>
+            <option>GBP</option><option>EUR</option><option>KES</option>
+          </select>
+        </div>
+      </div>
+      <div class="adm-form-group" style="margin-top:12px">
+        <label style="font-size:12px;color:var(--text-3);display:block;margin-bottom:6px">Admin Note <span style="color:var(--text-3)">(shown to user)</span></label>
+        <input id="lbNote" class="adm-input" placeholder="Optional note…" />
+      </div>
+    </div>
+    <div class="adm-modal-foot">
+      <button class="adm-btn-ghost" onclick="closeLbModal()">Cancel</button>
+      <button class="adm-btn-confirm" id="lbModalConfirm" onclick="executeLbAction()">Confirm</button>
+    </div>
+  </div>
+</div>
+
 <!-- All support chat logic is handled by admin.js -->
 <script src="{{ url_for('static', filename='assets/js/admin.js') }}"></script>
+
+<style>
+/* ── Manual Deposit user dropdown ── */
+.dep-user-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--surface-2, #1c1f2e);
+  border: 1px solid var(--accent, #6c63ff);
+  border-radius: 8px;
+  z-index: 100;
+  max-height: 180px;
+  overflow-y: auto;
+  margin-top: 4px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+}
+.dep-user-option {
+  padding: 10px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border, #2a2d3a);
+  color: var(--text-1, #e8eaf0);
+  transition: background 0.1s;
+}
+.dep-user-option:last-child { border-bottom: none; }
+.dep-user-option:hover      { background: var(--surface, #13151f); }
+.dep-user-option small      { color: var(--text-3, #5a5e6e); font-size: 11px; display:block; margin-top:2px; }
+
+/* ── TX type badges ── */
+.tx-type-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.tx-type-send     { background: rgba(234,179,8,.15);  color: #eab308; }
+.tx-type-withdraw { background: rgba(239,68,68,.15);  color: #ef4444; }
+.tx-type-deposit  { background: rgba(74,222,128,.15); color: #4ade80; }
+.tx-type-receive  { background: rgba(74,222,128,.15); color: #4ade80; }
+
+/* ── Approve / Decline action buttons ── */
+.btn-approve {
+  background: rgba(74,222,128,.15);
+  color: #4ade80;
+  border: 1px solid rgba(74,222,128,.3);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+.btn-approve:hover { background: rgba(74,222,128,.3); }
+
+.btn-decline {
+  background: rgba(239,68,68,.12);
+  color: #ef4444;
+  border: 1px solid rgba(239,68,68,.25);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s;
+}
+.btn-decline:hover { background: rgba(239,68,68,.25); }
+
+.tx-actions-row { display: flex; gap: 6px; align-items: center; }
+</style>
 
 {% endblock %}

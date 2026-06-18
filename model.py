@@ -33,6 +33,24 @@ class User(db.Model):
     def __repr__(self):
         return f'<User {self.email}>'
 
+class PasswordResetToken(db.Model):
+    """
+    One-time password reset token tied to a user.
+    Expires after 30 minutes, single use only.
+    """
+    __tablename__ = 'password_reset_tokens'
+
+    id         = db.Column(db.Integer,  primary_key=True)
+    user_id    = db.Column(db.Integer,  db.ForeignKey('users.id'), nullable=False)
+    token      = db.Column(db.String(128), nullable=False, unique=True, index=True)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used       = db.Column(db.Boolean,  nullable=False, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship('User', backref='reset_tokens', lazy=True)
+
+    def is_valid(self):
+        return (not self.used) and (datetime.utcnow() < self.expires_at)
 
 class Wallet(db.Model):
     __tablename__ = 'wallets'
@@ -232,4 +250,57 @@ class ConnectedWallet(db.Model):
             "verified_at": self.verified_at.isoformat() if self.verified_at else None,
             "created_at":  self.created_at.isoformat() if self.created_at else None,
         }
- 
+
+class LinkedBank(db.Model):
+    """
+    Stores a user's linked bank account — persisted in DB
+    so admin can view, toggle, and act on it.
+    Replaces the old session-only linked_bank dict.
+    """
+    __tablename__ = 'linked_banks'
+
+    id           = db.Column(db.Integer, primary_key=True)
+    user_id      = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+
+    # Bank identity
+    bank_code    = db.Column(db.String(32),  nullable=False)
+    bank_name    = db.Column(db.String(128), nullable=False)
+    country_code = db.Column(db.String(4),   nullable=False, default='NG')
+
+    # Account details
+    account_number     = db.Column(db.String(32),  nullable=False)
+    account_name       = db.Column(db.String(128), nullable=False)
+    account_last4      = db.Column(db.String(4),   nullable=False)
+
+    # Optional international fields
+    iban         = db.Column(db.String(64),  nullable=True)
+    swift_bic    = db.Column(db.String(16),  nullable=True)
+    bank_type    = db.Column(db.String(16),  nullable=False, default='local')  # local | international
+
+    # Status
+    is_enabled   = db.Column(db.Boolean, nullable=False, default=True)
+    is_verified  = db.Column(db.Boolean, nullable=False, default=False)
+
+    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at   = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    user         = db.relationship('User', backref='linked_banks', lazy=True)
+
+    def to_dict(self):
+        return {
+            'id':             self.id,
+            'user_id':        self.user_id,
+            'bank_code':      self.bank_code,
+            'bank_name':      self.bank_name,
+            'country_code':   self.country_code,
+            'account_number': self.account_number,
+            'account_name':   self.account_name,
+            'account_last4':  self.account_last4,
+            'iban':           self.iban,
+            'swift_bic':      self.swift_bic,
+            'bank_type':      self.bank_type,
+            'is_enabled':     self.is_enabled,
+            'is_verified':    self.is_verified,
+            'created_at':     self.created_at.isoformat() if self.created_at else None,
+        }

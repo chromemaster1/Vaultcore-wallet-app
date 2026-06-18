@@ -34,7 +34,7 @@
   <div class="wallet-section">
     <h3 class="section-title">Your Holdings</h3>
     <div class="holdings-list" id="holdingsList">
-      <div class="loading-state">Loading holdings…</div>
+      <div class="loading-state">Total holdings…</div>
     </div>
   </div>
 
@@ -73,78 +73,93 @@ let walletVisible = true;
 
 async function loadWallet() {
   try {
-    const res  = await fetch('/api/wallet-summary');
+    const res = await fetch('/api/wallet-summary');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
-    // total value
-    document.getElementById('walletAmount').textContent =
-      `$${data.total_value.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+    // ── Total balance ─────────────────────────────────────────
+    const totalEl = document.getElementById('walletAmount');
+    if (totalEl) {
+      totalEl.textContent = '$' + (data.total_value || 0).toLocaleString('en-US', {
+        minimumFractionDigits: 2, maximumFractionDigits: 2
+      });
+    }
 
-    // holdings
-    const holdingsHTML = Object.entries(data.holdings).map(([sym, h]) => {
-      const up = h.change_24h >= 0;
-      return `
-        <div class="holding-card">
-          <div class="holding-icon coin-icon ${sym.toLowerCase()}">${sym}</div>
-          <div class="holding-info">
-            <div class="holding-name">${sym}</div>
-            <div class="holding-amount">${h.balance.toFixed(8)} ${sym}</div>
-          </div>
-          <div class="holding-values">
-            <div class="holding-usd">$${h.usd_value.toFixed(2)}</div>
-            <div class="holding-chg ${up?'chg-up':'chg-down'}">
-              ${up?'+':''}${h.change_24h.toFixed(2)}%
-            </div>
-          </div>
-        </div>`;
-    }).join('');
+    // ── Holdings ──────────────────────────────────────────────
+    const entries = Object.entries(data.holdings || {})
+      .filter(([, h]) => h.balance > 0)
+      .sort(([, a], [, b]) => b.usd_value - a.usd_value);
 
-    document.getElementById('holdingsList').innerHTML =
-      holdingsHTML || '<div class="empty-state">No holdings yet</div>';
+    if (!entries.length) {
+      document.getElementById('holdingsList').innerHTML =
+        '<div class="empty-state">No holdings yet. Make a deposit to get started.</div>';
+    } else {
+      document.getElementById('holdingsList').innerHTML = entries.map(([sym, h]) => {
+        const chg    = typeof h.change_24h === 'number' ? h.change_24h : 0;
+        const up     = chg >= 0;
+        const chgStr = (up ? '+' : '') + chg.toFixed(2) + '%';
+        const price  = h.price > 0 ? '$' + h.price.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:8}) : '—';
+        return `
+          <div class="holding-card">
+            <div class="holding-icon coin-icon ${sym.toLowerCase()}">${sym}</div>
+            <div class="holding-info">
+              <div class="holding-name">${sym}</div>
+              <div class="holding-amount">${h.balance.toFixed(6)} ${sym}</div>
+              <div style="font-size:11px;color:var(--text-3);margin-top:2px">@ ${price}</div>
+            </div>
+            <div class="holding-values">
+              <div class="holding-usd">$${(h.usd_value||0).toFixed(2)}</div>
+              <div class="holding-chg ${up ? 'chg-up' : 'chg-down'}">${chgStr}</div>
+            </div>
+          </div>`;
+      }).join('');
+    }
 
-    // trades
-    const tradesHTML = data.open_trades.map(t => {
-      const isPnlUp = t.pnl >= 0;
-      return `
-        <div class="trade-card">
-          <div class="trade-header">
-            <span class="trade-pair">${t.pair}</span>
-            <span class="trade-side ${t.side.toLowerCase()}">${t.side}</span>
-          </div>
-          <div class="trade-details">
-            <div class="trade-row">
-              <span class="trade-label">Amount</span>
-              <span class="trade-value">${t.amount} ${t.pair.split('/')[0]}</span>
+    // ── Open Trades ───────────────────────────────────────────
+    const openTrades = (data.open_trades || []).filter(t => t.status === 'open');
+    if (!openTrades.length) {
+      document.getElementById('tradesList').innerHTML =
+        '<div class="empty-state">No open trades</div>';
+    } else {
+      document.getElementById('tradesList').innerHTML = openTrades.map(t => {
+        const pnl    = typeof t.pnl === 'number' ? t.pnl : 0;
+        const pnlPct = typeof t.pnl_percent === 'number' ? t.pnl_percent
+                       : (t.entry_price > 0 ? ((t.current_price - t.entry_price) / t.entry_price * 100) : 0);
+        const up     = pnl >= 0;
+        const base   = (t.pair || '/').split('/')[0];
+        const date   = t.opened_at ? new Date(t.opened_at).toLocaleDateString() : '—';
+        return `
+          <div class="trade-card">
+            <div class="trade-header">
+              <span class="trade-pair">${t.pair}</span>
+              <span class="trade-side ${(t.side||'').toLowerCase()}">${t.side}</span>
             </div>
-            <div class="trade-row">
-              <span class="trade-label">Entry</span>
-              <span class="trade-value">$${t.entry_price.toFixed(2)}</span>
+            <div class="trade-details">
+              <div class="trade-row"><span class="trade-label">Amount</span><span class="trade-value">${(t.amount||0).toFixed(4)} ${base}</span></div>
+              <div class="trade-row"><span class="trade-label">Entry</span><span class="trade-value">$${(t.entry_price||0).toFixed(2)}</span></div>
+              <div class="trade-row"><span class="trade-label">Current</span><span class="trade-value">$${(t.current_price||0).toFixed(2)}</span></div>
+              <div class="trade-row pnl-row">
+                <span class="trade-label">P&L</span>
+                <span class="trade-pnl ${up ? 'up' : 'down'}">
+                  ${up?'+':''}$${pnl.toFixed(2)} (${up?'+':''}${pnlPct.toFixed(2)}%)
+                </span>
+              </div>
             </div>
-            <div class="trade-row">
-              <span class="trade-label">Current</span>
-              <span class="trade-value">$${t.current_price.toFixed(2)}</span>
+            <div class="trade-footer">
+              <span class="trade-time">${date}</span>
+              <button class="btn-close-trade" onclick="closeTrade('${t.id}')">Close</button>
             </div>
-            <div class="trade-row pnl-row">
-              <span class="trade-label">P&L</span>
-              <span class="trade-pnl ${isPnlUp?'up':'down'}">
-                ${isPnlUp?'+':''}$${t.pnl.toFixed(2)} (${isPnlUp?'+':''}${t.pnl_percent.toFixed(2)}%)
-              </span>
-            </div>
-          </div>
-          <div class="trade-footer">
-            <span class="trade-time">${t.opened_at}</span>
-            <button class="btn-close-trade" onclick="closeTrade('${t.id}')">Close</button>
-          </div>
-        </div>`;
-    }).join('');
-
-    document.getElementById('tradesList').innerHTML =
-      tradesHTML || '<div class="empty-state">No open trades</div>';
+          </div>`;
+      }).join('');
+    }
 
   } catch(e) {
     console.error('Wallet load failed:', e);
-    document.getElementById('holdingsList').innerHTML =
-      '<div class="error-state">Failed to load wallet data</div>';
+    // Show error only on holdings, not entire page
+    const el = document.getElementById('holdingsList');
+    if (el) el.innerHTML = '<div class="empty-state" style="color:var(--text-3)">Could not load holdings. <button onclick="loadWallet()" style="color:var(--gold);background:none;border:none;cursor:pointer;font-size:13px">Retry</button></div>';
+    const tel = document.getElementById('tradesList');
+    if (tel) tel.innerHTML = '<div class="empty-state">—</div>';
   }
 }
 

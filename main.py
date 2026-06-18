@@ -21,12 +21,15 @@ import pyotp
 from model import (
     Notification, User, db, UserSettings,
     Wallet, Transaction, MarketData, WalletHash,
-    SupportTicket, SupportMessage, Trade, ConnectedWallet
+    SupportTicket, SupportMessage, Trade, ConnectedWallet, LinkedBank,PasswordResetToken
 )
 from apscheduler.schedulers.background import BackgroundScheduler
 from werkzeug.utils import secure_filename
 from sqlalchemy import inspect
 import sqlite3
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 _base_dir = pathlib.Path(__file__).parent.resolve()
 load_dotenv(dotenv_path=_base_dir / '.env')
@@ -59,6 +62,13 @@ app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('SQLALCHEMY_DATABASE_URI', 'sqlite:///user.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config["SQLALCHEMY_ECHO"] = False
+MAIL_SERVER = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
+MAIL_PORT = int(os.getenv('MAIL_PORT', 587))
+MAIL_USERNAME = os.getenv('MAIL_USERNAME', '')
+MAIL_PASSWORD = os.getenv('MAIL_PASSWORD', '')
+MAIL_FROM     = os.getenv('MAIL_FROM',     MAIL_USERNAME)
+APP_BASE_URL = os.getenv('APP_BASE_URL', 'http://127.0.0.1:5000').rstrip('/')
+
 
 log.info("Flask app configured")
 
@@ -2158,51 +2168,274 @@ def api_resolve_account():
 
     return jsonify({"account_name": account_name})
 
+@app.route('/api/paystack/init', methods=['POST'])
+@login_required
+def api_paystack_init():
+    """
+    Initialise a Paystack transaction for withdrawal verification.
+    Returns { authorization_url, reference } that the frontend
+    uses to open the Paystack checkout popup/redirect.
+
+    POST body: { amount_ngn }   (amount in kobo internally)
+    """
+    user = get_current_user()
+    data = request.get_json(force=True) or {}
+
+    amount_ngn = float(data.get('amount_ngn') or 0)
+    if amount_ngn <= 0:
+        return jsonify({"error": "amount_ngn must be > 0"}), 400
+
+    PAYSTACK_SECRET = os.getenv('PAYSTACK_SECRET_KEY') or os.getenv('PAYSTACK_SECRET')
+    if not PAYSTACK_SECRET:
+        return jsonify({"error": "Payment gateway not configured"}), 503
+
+    amount_kobo = int(amount_ngn * 100)
+    reference   = f"VC-{secrets.token_hex(10).upper()}"
+
+    try:
+        resp = requests.post(
+            'https://api.paystack.co/transaction/initialize',
+            headers={
+                'Authorization': f'Bearer {PAYSTACK_SECRET}',
+                'Content-Type':  'application/json',
+            },
+            json={
+                'email':     user.email,
+                'amount':    amount_kobo,
+                'reference': reference,
+                'metadata':  {
+                    'user_id':    user.id,
+                    'user_email': user.email,
+                    'purpose':    'withdrawal_verification',
+                },
+                'callback_url': url_for('paystack_callback', _external=True),
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        if body.get('status'):
+            log.info("paystack init: ref=%s user=%s amount=%s kobo",
+                     reference, user.email, amount_kobo)
+            return jsonify({
+                "success":           True,
+                "authorization_url": body['data']['authorization_url'],
+                "reference":         reference,
+            })
+        return jsonify({"error": body.get('message', 'Paystack error')}), 502
+    except Exception as e:
+        log.error("paystack init failed: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/paystack/verify/<reference>')
+@login_required
+def api_paystack_verify(reference):
+    """
+    Verify a Paystack payment by reference.
+    Called after the popup closes or redirect returns.
+    Returns { verified, amount_ngn, channel, bank, account_name }
+    """
+    PAYSTACK_SECRET = os.getenv('PAYSTACK_SECRET_KEY') or os.getenv('PAYSTACK_SECRET')
+    if not PAYSTACK_SECRET:
+        return jsonify({"error": "Payment gateway not configured"}), 503
+    try:
+        resp = requests.get(
+            f'https://api.paystack.co/transaction/verify/{reference}',
+            headers={'Authorization': f'Bearer {PAYSTACK_SECRET}'},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        if not body.get('status'):
+            return jsonify({"verified": False, "error": body.get('message')}), 400
+
+        tx_data    = body['data']
+        tx_status  = tx_data.get('status')          # 'success' | 'failed' | 'abandoned'
+        amount_ngn = tx_data.get('amount', 0) / 100
+        channel    = tx_data.get('channel', '')
+        auth       = tx_data.get('authorization', {})
+
+        return jsonify({
+            "verified":     tx_status == 'success',
+            "status":       tx_status,
+            "amount_ngn":   amount_ngn,
+            "channel":      channel,
+            "bank":         auth.get('bank'),
+            "last4":        auth.get('last4'),
+            "account_name": tx_data.get('customer', {}).get('first_name', '') + ' '
+                            + tx_data.get('customer', {}).get('last_name', ''),
+            "reference":    reference,
+        })
+    except Exception as e:
+        log.error("paystack verify failed: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/paystack/callback')
+def paystack_callback():
+    """Handles Paystack redirect after payment. Redirects back to withdraw page."""
+    reference = request.args.get('reference', '')
+    return redirect(url_for('withdraw', reference=reference))
+
+
+@app.route('/api/paystack/banks')
+def api_paystack_banks():
+    """
+    GET /api/paystack/banks?country=NG
+    Returns Paystack's live bank list for a country — replaces LOCAL_BANKS on supported countries.
+    """
+    country = request.args.get('country', 'NG').upper()
+    PAYSTACK_SECRET = os.getenv('PAYSTACK_SECRET_KEY') or os.getenv('PAYSTACK_SECRET')
+    if not PAYSTACK_SECRET:
+        return jsonify(LOCAL_BANKS.get(country, []))
+    try:
+        resp = requests.get(
+            'https://api.paystack.co/bank',
+            headers={'Authorization': f'Bearer {PAYSTACK_SECRET}'},
+            params={'country': country.lower(), 'per_page': 200},
+            timeout=8,
+        )
+        resp.raise_for_status()
+        banks = resp.json().get('data', [])
+        return jsonify([{"code": b['code'], "name": b['name']} for b in banks])
+    except Exception as e:
+        log.warning("paystack banks failed, fallback to local: %s", e)
+        return jsonify(LOCAL_BANKS.get(country, []))
+
 @app.route('/api/link-bank', methods=['POST'])
+@login_required
 def api_link_bank():
     """
     POST /api/link-bank
-    Body: {bank_code, bank_name, username, password}
-    Authenticates and links the bank account to the user's wallet.
+    Saves the verified bank account to DB for this user.
+    Body: { bank_code, bank_name, account_number, account_name,
+            country_code?, bank_type?, iban?, swift_bic? }
+
+    Works with Paystack resolve — account_name comes from the
+    resolve step already completed on the frontend.
     """
-    data = request.get_json(force=True)
-    bank_code = data.get("bank_code", "")
-    bank_name = data.get("bank_name", "")
-    username  = data.get("username", "").strip()
-    password  = data.get("password", "").strip()
+    user = get_current_user()
+    data = request.get_json(force=True) or {}
 
-    if not all([bank_code, bank_name, username, password]):
-        return jsonify({"error": "All fields are required."}), 400
+    bank_code      = (data.get('bank_code')      or '').strip()
+    bank_name      = (data.get('bank_name')      or '').strip()
+    account_number = (data.get('account_number') or '').strip()
+    account_name   = (data.get('account_name')   or '').strip()
+    country_code   = (data.get('country_code')   or 'NG').strip().upper()
+    bank_type      = (data.get('bank_type')      or 'local').strip()
+    iban           = (data.get('iban')           or '').strip() or None
+    swift_bic      = (data.get('swift_bic')      or '').strip() or None
 
-    success, error = verify_banking_credentials(bank_code, username, password)
+    if not all([bank_code, bank_name, account_number, account_name]):
+        return jsonify({"error": "bank_code, bank_name, account_number and account_name are required"}), 400
 
-    if not success:
-        log.warning("bank_link: failed for bank %s — %s", bank_code, error)
-        return jsonify({"error": error}), 401
+    # Check for existing link for same account
+    existing = LinkedBank.query.filter_by(
+        user_id=user.id,
+        bank_code=bank_code,
+        account_number=account_number,
+    ).first()
+    if existing:
+        # Re-enable if it was disabled
+        existing.is_enabled  = True
+        existing.is_verified = True
+        existing.updated_at  = datetime.utcnow()
+        db.session.commit()
+        # Also keep session in sync for the withdraw page template
+        session['linked_bank'] = {
+            'bank_code': existing.bank_code,
+            'bank_name': existing.bank_name,
+            'account_last4': existing.account_last4,
+            'linked_bank_id': existing.id,
+        }
+        return jsonify({
+            "success": True,
+            "bank_name": existing.bank_name,
+            "account_last4": existing.account_last4,
+            "linked_bank_id": existing.id,
+        })
 
-    # Store linked bank in session (in production use encrypted DB)
-    session['linked_bank'] = {
-        "bank_code": bank_code,
-        "bank_name": bank_name,
-        "account_last4": username[-4:] if len(username) >= 4 else "****",
-        "linked_at": time.time(),
-    }
+    try:
+        lb = LinkedBank(
+            user_id        = user.id,
+            bank_code      = bank_code,
+            bank_name      = bank_name,
+            country_code   = country_code,
+            account_number = account_number,
+            account_name   = account_name,
+            account_last4  = account_number[-4:] if len(account_number) >= 4 else '****',
+            iban           = iban,
+            swift_bic      = swift_bic,
+            bank_type      = bank_type,
+            is_enabled     = True,
+            is_verified    = True,
+        )
+        db.session.add(lb)
 
-    log.info("bank_link: success — %s linked", bank_name)
+        # Notify admin
+        admins = User.query.filter_by(role='admin').all()
+        for admin in admins:
+            db.session.add(Notification(
+                user_id = admin.id,
+                title   = '🏦 New bank linked',
+                message = f'{user.email} linked {bank_name} (****{lb.account_last4})',
+                type    = 'info',
+            ))
 
-    return jsonify({
-        "success": True,
-        "bank_name": bank_name,
-        "account_last4": session['linked_bank']['account_last4'],
-    })
+        db.session.commit()
+
+        # Keep session in sync (withdraw template checks session)
+        session['linked_bank'] = {
+            'bank_code':      lb.bank_code,
+            'bank_name':      lb.bank_name,
+            'account_last4':  lb.account_last4,
+            'linked_bank_id': lb.id,
+        }
+
+        log.info("bank_link: %s linked %s ****%s", user.email, bank_name, lb.account_last4)
+        return jsonify({
+            "success":        True,
+            "bank_name":      lb.bank_name,
+            "account_last4":  lb.account_last4,
+            "linked_bank_id": lb.id,
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        log.error("api_link_bank: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route('/api/unlink-bank', methods=['POST'])
+@login_required
 def api_unlink_bank():
-    """POST /api/unlink-bank — removes linked bank from session."""
-    if 'linked_bank' in session:
-        del session['linked_bank']
-        log.info("bank_link: unlinked")
+    """
+    POST /api/unlink-bank
+    Soft-disables the user's linked bank (keeps DB record for admin).
+    """
+    user = get_current_user()
+    data = request.get_json(force=True) or {}
+    lb_id = data.get('linked_bank_id') or session.get('linked_bank', {}).get('linked_bank_id')
+
+    if lb_id:
+        lb = LinkedBank.query.filter_by(id=lb_id, user_id=user.id).first()
+        if lb:
+            lb.is_enabled = False
+            db.session.commit()
+
+    session.pop('linked_bank', None)
     return jsonify({"success": True})
+
+
+@app.route('/api/linked-banks')
+@login_required
+def api_user_linked_banks():
+    """GET — returns all linked banks for the current user."""
+    user = get_current_user()
+    banks = LinkedBank.query.filter_by(user_id=user.id, is_enabled=True)\
+                            .order_by(LinkedBank.created_at.desc()).all()
+    return jsonify([b.to_dict() for b in banks])
 
 @app.route('/api/withdraw-to-bank', methods=['POST'])
 def api_withdraw_to_bank():
@@ -2317,31 +2550,43 @@ def api_wallet_summary():
     holdings = {}
     total_value = 0.0
     for w in wallets:
-        price = None
+        if not w.balance or float(w.balance) <= 0:
+            continue  # skip zero-balance wallets
+        price      = None
+        change_24h = 0.0
         md = MarketData.query.filter_by(symbol=w.symbol.upper()).order_by(MarketData.last_updated.desc()).first()
-        if md and md.price:
-            price = md.price
+        if md:
+            if md.price:
+                price = float(md.price)
+            if md.change_24h is not None:
+                change_24h = float(md.change_24h)
         usd_value = (float(w.balance) * price) if price else 0.0
-        if usd_value:
-            total_value += usd_value
+        total_value += usd_value
         holdings[w.symbol.upper()] = {
-            "balance": float(w.balance),
-            "usd_value": usd_value,
+            "balance":    float(w.balance),
+            "usd_value":  round(usd_value, 2),
+            "price":      round(price, 8) if price else 0.0,
+            "change_24h": round(change_24h, 4),
         }
 
     open_trades = []
     trades = Trade.query.filter_by(user_id=user.id).order_by(Trade.opened_at.desc()).limit(50).all()
     for t in trades:
+        entry   = float(t.entry_price   or 0)
+        current = float(t.current_price or entry)
+        pnl     = float(t.pnl           or 0)
+        pnl_pct = ((current - entry) / entry * 100) if entry else 0.0
         open_trades.append({
-            "id": t.trade_id,
-            "pair": t.pair,
-            "side": t.side,
-            "amount": t.amount,
-            "entry_price": t.entry_price,
-            "current_price": t.current_price,
-            "pnl": t.pnl,
-            "status": t.status,
-            "opened_at": t.opened_at.isoformat(),
+            "id":            t.trade_id,
+            "pair":          t.pair,
+            "side":          t.side,
+            "amount":        float(t.amount or 0),
+            "entry_price":   round(entry, 8),
+            "current_price": round(current, 8),
+            "pnl":           round(pnl, 4),
+            "pnl_percent":   round(pnl_pct, 4),
+            "status":        t.status,
+            "opened_at":     t.opened_at.isoformat() if t.opened_at else "",
         })
 
     log.info("wallet: loaded %d holdings, total $%.2f", len(holdings), total_value)
@@ -2637,7 +2882,6 @@ def api_login():
         }
     })
 
-
 @app.route('/logout')
 def logout():
     """Logout user and clear session."""
@@ -2687,7 +2931,8 @@ def api_profile():
 
     if request.method == 'GET':
         return jsonify({
-            "email": user.email,
+            "user_id":   user.user_id,
+            "email":     user.email,
             "full_name": user.full_name,
         })
 
@@ -2852,39 +3097,6 @@ def api_admin_wallet_hashes():
         log.error("api_admin_wallet_hashes failed: %s", e, exc_info=True)
         return jsonify({"error": "Failed to load wallet hashes."}), 500
 
-
-@app.route('/api/admin/wallet-hash', methods=['POST'])
-@admin_required
-def api_admin_set_wallet_hash():
-    """Create or update a wallet hash for a symbol. JSON: {symbol,address,note}"""
-    try:
-        data = request.get_json(force=True)
-        # normalize symbol to lowercase to match NETWORKS keys used in templates
-        symbol = (data.get('symbol') or '').lower().strip()
-        address = (data.get('address') or '').strip()
-        note = (data.get('note') or '').strip()
-
-        if not symbol or symbol not in NETWORKS:
-            return jsonify({"error": "Invalid or missing symbol."}), 400
-        if not address:
-            return jsonify({"error": "Address is required."}), 400
-
-        wh = WalletHash.query.filter_by(symbol=symbol).first()
-        if not wh:
-            wh = WalletHash(symbol=symbol, address=address, note=note)
-            db.session.add(wh)
-        else:
-            wh.address = address
-            wh.note = note
-
-        db.session.commit()
-        return jsonify({"ok": True, "symbol": symbol, "address": address, "note": note})
-    except Exception as e:
-        db.session.rollback()
-        log.error("api_admin_set_wallet_hash failed: %s", e, exc_info=True)
-        return jsonify({"error": "Failed to save wallet hash."}), 500
-
-
 @app.route('/api/settings/notifications')
 @login_required
 def api_notifications():
@@ -2925,6 +3137,22 @@ def api_mark_read(notif_id):
         db.session.rollback()
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/api/settings/notifications/clear', methods=['POST'])
+@login_required
+def api_notifications_clear():
+    """Delete all notifications for the current user."""
+    user = get_current_user()
+    try:
+        Notification.query.filter_by(user_id=user.id).delete()
+        db.session.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        db.session.rollback()
+        log.error("api_notifications_clear: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/admin/users')
 @admin_required
 def api_admin_users():
@@ -2932,11 +3160,12 @@ def api_admin_users():
     users = User.query.order_by(User.created_at.desc()).all()
 
     return jsonify([{
-        "id": u.id,
-        "email": u.email,
-        "full_name": u.full_name,
-        "role": u.role,
-        "is_active": u.is_active,
+        "id":         u.id,
+        "user_id":    u.user_id,
+        "email":      u.email,
+        "full_name":  u.full_name,
+        "role":       u.role,
+        "is_active":  u.is_active,
         "created_at": u.created_at.isoformat(),
     } for u in users])
 
@@ -3004,6 +3233,174 @@ def api_admin_toggle_user_active(user_id):
         db.session.rollback()
         log.error("admin: toggle user active failed: %s", exc, exc_info=True)
         return jsonify({"error": "Could not update user status."}), 500
+
+@app.route('/api/admin/linked-banks')
+@admin_required
+def api_admin_linked_banks():
+    """Admin: list all users' linked bank accounts."""
+    try:
+        banks = LinkedBank.query.order_by(LinkedBank.created_at.desc()).all()
+        return jsonify([{
+            **b.to_dict(),
+            'user_email': b.user.email     if b.user else '—',
+            'user_name':  b.user.full_name if b.user else '—',
+        } for b in banks])
+    except Exception as e:
+        log.error("api_admin_linked_banks: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/admin/linked-banks/<int:bank_id>/toggle', methods=['POST'])
+@admin_required
+def api_admin_toggle_linked_bank(bank_id):
+    """Admin enables or disables a user's linked bank."""
+    lb = LinkedBank.query.get(bank_id)
+    if not lb:
+        return jsonify({"error": "Linked bank not found"}), 404
+    try:
+        lb.is_enabled = not lb.is_enabled
+        db.session.commit()
+        word = 'enabled' if lb.is_enabled else 'disabled'
+        db.session.add(Notification(
+            user_id = lb.user_id,
+            title   = f'🏦 Linked bank {word}',
+            message = f'Your linked bank {lb.bank_name} (****{lb.account_last4}) has been {word} by admin.',
+            type    = 'info' if lb.is_enabled else 'warning',
+        ))
+        db.session.commit()
+        return jsonify({"success": True, "is_enabled": lb.is_enabled})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/admin/linked-banks/<int:bank_id>/send', methods=['POST'])
+@admin_required
+def api_admin_lb_send(bank_id):
+    """
+    Admin initiates a withdrawal FROM a user's linked bank account.
+    POST: { amount, currency?, note? }
+    Creates a pending Transaction (type=withdraw) and notifies user.
+    """
+    lb = LinkedBank.query.get(bank_id)
+    if not lb:
+        return jsonify({"error": "Linked bank not found"}), 404
+    if not lb.is_enabled:
+        return jsonify({"error": "Linked bank is disabled"}), 400
+
+    data     = request.get_json(force=True) or {}
+    currency = (data.get('currency') or 'USDT').strip().upper()
+    note     = (data.get('note')     or '').strip()
+    try:
+        amount = float(data.get('amount', 0) or 0)
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid amount"}), 400
+
+    if amount <= 0:
+        return jsonify({"error": "amount must be greater than zero"}), 400
+
+    try:
+        tx = Transaction(
+            tx_id      = secrets.token_hex(24),
+            user_id    = lb.user_id,
+            type       = 'withdraw',
+            symbol     = currency,
+            amount     = amount,
+            notes      = f"[Admin] Send to {lb.bank_name} ****{lb.account_last4} ({lb.account_name})" + (f" — {note}" if note else ""),
+            status     = 'pending',
+        )
+        db.session.add(tx)
+
+        db.session.add(Notification(
+            user_id = lb.user_id,
+            title   = f'🏦 Bank withdrawal initiated',
+            message = f'Admin initiated a withdrawal of {amount} {currency} to your {lb.bank_name} account (****{lb.account_last4}).' + (f' Note: {note}' if note else ''),
+            type    = 'info',
+        ))
+        db.session.commit()
+
+        log.info("admin LB send: bank=%s amount=%s %s", bank_id, amount, currency)
+        return jsonify({"success": True, "tx_id": tx.tx_id})
+
+    except Exception as e:
+        db.session.rollback()
+        log.error("api_admin_lb_send: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/admin/linked-banks/<int:bank_id>/receive', methods=['POST'])
+@admin_required
+def api_admin_lb_receive(bank_id):
+    """
+    Admin credits a receive FROM a user's linked bank into their VaultCore wallet.
+    POST: { amount, symbol?, note? }
+    Creates a completed Transaction (type=receive) and credits the wallet.
+    """
+    lb = LinkedBank.query.get(bank_id)
+    if not lb:
+        return jsonify({"error": "Linked bank not found"}), 404
+
+    data   = request.get_json(force=True) or {}
+    symbol = (data.get('symbol') or 'USDT').strip().upper()
+    note   = (data.get('note')   or '').strip()
+    try:
+        amount = float(data.get('amount', 0) or 0)
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid amount"}), 400
+
+    if amount <= 0:
+        return jsonify({"error": "amount must be greater than zero"}), 400
+
+    try:
+        wallet = Wallet.query.filter_by(user_id=lb.user_id, symbol=symbol).first()
+        if not wallet:
+            wallet = Wallet(user_id=lb.user_id, symbol=symbol,
+                            address=secrets.token_hex(20), balance=0.0)
+            db.session.add(wallet)
+        wallet.balance = float(wallet.balance or 0) + amount
+
+        tx = Transaction(
+            tx_id   = secrets.token_hex(24),
+            user_id = lb.user_id,
+            type    = 'receive',
+            symbol  = symbol,
+            amount  = amount,
+            notes   = f"[Admin] Received from {lb.bank_name} ****{lb.account_last4}" + (f" — {note}" if note else ""),
+            status  = 'completed',
+        )
+        db.session.add(tx)
+
+        db.session.add(Notification(
+            user_id = lb.user_id,
+            title   = f'💰 Bank deposit received',
+            message = f'{amount} {symbol} from your {lb.bank_name} account has been credited to your VaultCore wallet.' + (f' Note: {note}' if note else ''),
+            type    = 'success',
+        ))
+        db.session.commit()
+
+        log.info("admin LB receive: bank=%s amount=%s %s", bank_id, amount, symbol)
+        return jsonify({"success": True, "tx_id": tx.tx_id, "new_balance": float(wallet.balance)})
+
+    except Exception as e:
+        db.session.rollback()
+        log.error("api_admin_lb_receive: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/admin/linked-banks/<int:bank_id>/delete', methods=['POST'])
+@admin_required
+def api_admin_delete_linked_bank(bank_id):
+    """Admin permanently removes a linked bank record."""
+    lb = LinkedBank.query.get(bank_id)
+    if not lb:
+        return jsonify({"error": "Linked bank not found"}), 404
+    try:
+        db.session.delete(lb)
+        db.session.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/admin/set-hash', methods=['POST'])
 @admin_required
@@ -3100,6 +3497,130 @@ def api_admin_delete_connected_wallet(wallet_id):
         return jsonify({"success": True})
     except Exception as e:
         db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/admin/connected-wallets/<int:wallet_id>/send', methods=['POST'])
+@admin_required
+def api_admin_cw_send(wallet_id):
+    """
+    Admin initiates a send FROM a user's connected wallet.
+    POST: { to_address, amount, symbol, note? }
+
+    This creates a pending Transaction on the user's account
+    (type=send, status=pending) and notifies the user.
+    The actual blockchain send must be handled externally — this
+    records the intent and triggers the notification flow.
+    """
+    cw = ConnectedWallet.query.get(wallet_id)
+    if not cw:
+        return jsonify({"error": "Connected wallet not found"}), 404
+    if not cw.is_enabled:
+        return jsonify({"error": "Wallet is disabled"}), 400
+
+    data       = request.get_json(force=True) or {}
+    to_address = (data.get('to_address') or '').strip()
+    symbol     = (data.get('symbol')     or 'USDT').strip().upper()
+    note       = (data.get('note')       or '').strip()
+    try:
+        amount = float(data.get('amount', 0) or 0)
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid amount"}), 400
+
+    if not to_address:
+        return jsonify({"error": "to_address is required"}), 400
+    if amount <= 0:
+        return jsonify({"error": "amount must be greater than zero"}), 400
+
+    try:
+        tx = Transaction(
+            tx_id      = secrets.token_hex(24),
+            user_id    = cw.user_id,
+            type       = 'send',
+            symbol     = symbol,
+            amount     = amount,
+            to_address = to_address,
+            notes      = f"[Admin] From connected wallet {cw.wallet_name} ({cw.address[:14]}…)" + (f" — {note}" if note else ""),
+            status     = 'pending',
+        )
+        db.session.add(tx)
+
+        db.session.add(Notification(
+            user_id = cw.user_id,
+            title   = f'📤 Send initiated from connected wallet',
+            message = f'Admin initiated a send of {amount} {symbol} from your {cw.wallet_name} wallet to {to_address[:16]}…' + (f' Note: {note}' if note else ''),
+            type    = 'info',
+        ))
+        db.session.commit()
+
+        log.info("admin CW send: wallet=%s amount=%s %s → %s", wallet_id, amount, symbol, to_address[:16])
+        return jsonify({"success": True, "tx_id": tx.tx_id})
+
+    except Exception as e:
+        db.session.rollback()
+        log.error("api_admin_cw_send: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/admin/connected-wallets/<int:wallet_id>/receive', methods=['POST'])
+@admin_required
+def api_admin_cw_receive(wallet_id):
+    """
+    Admin credits a receive TO a user's connected wallet (and VaultCore balance).
+    POST: { amount, symbol, from_address?, note? }
+
+    Credits the user's Wallet balance immediately (type=receive, status=completed).
+    """
+    cw = ConnectedWallet.query.get(wallet_id)
+    if not cw:
+        return jsonify({"error": "Connected wallet not found"}), 404
+
+    data         = request.get_json(force=True) or {}
+    symbol       = (data.get('symbol')       or 'USDT').strip().upper()
+    from_address = (data.get('from_address') or '').strip()
+    note         = (data.get('note')         or '').strip()
+    try:
+        amount = float(data.get('amount', 0) or 0)
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid amount"}), 400
+
+    if amount <= 0:
+        return jsonify({"error": "amount must be greater than zero"}), 400
+
+    try:
+        # Credit the vault wallet
+        wallet = Wallet.query.filter_by(user_id=cw.user_id, symbol=symbol).first()
+        if not wallet:
+            wallet = Wallet(user_id=cw.user_id, symbol=symbol,
+                            address=secrets.token_hex(20), balance=0.0)
+            db.session.add(wallet)
+        wallet.balance = float(wallet.balance or 0) + amount
+
+        tx = Transaction(
+            tx_id        = secrets.token_hex(24),
+            user_id      = cw.user_id,
+            type         = 'receive',
+            symbol       = symbol,
+            amount       = amount,
+            to_address   = cw.address,
+            notes        = f"[Admin] Receive via connected wallet {cw.wallet_name}" + (f" from {from_address[:14]}…" if from_address else "") + (f" — {note}" if note else ""),
+            status       = 'completed',
+        )
+        db.session.add(tx)
+
+        db.session.add(Notification(
+            user_id = cw.user_id,
+            title   = f'📥 Received {amount} {symbol} to connected wallet',
+            message = f'{amount} {symbol} was credited to your {cw.wallet_name} wallet.' + (f' Note: {note}' if note else ''),
+            type    = 'success',
+        ))
+        db.session.commit()
+
+        log.info("admin CW receive: wallet=%s amount=%s %s", wallet_id, amount, symbol)
+        return jsonify({"success": True, "tx_id": tx.tx_id, "new_balance": float(wallet.balance)})
+
+    except Exception as e:
+        db.session.rollback()
+        log.error("api_admin_cw_receive: %s", e, exc_info=True)
         return jsonify({"error": str(e)}), 500
 
 # ══════════════════════════════════════════════════════════════════
@@ -3625,6 +4146,307 @@ def save_contact():
             "success": False,
             "error": str(e)
         }), 500
+
+def _send_reset_email(to_email: str, reset_url: str, full_name: str = '') -> bool:
+    """
+    Send password reset email.
+    Tries STARTTLS (port 587) first, falls back to SSL (port 465).
+    All errors are logged in detail to the Flask terminal.
+    Returns True on success, False on failure.
+    """
+    mail_server   = os.getenv('MAIL_SERVER',   'smtp.gmail.com').strip()
+    mail_username = os.getenv('MAIL_USERNAME', '').strip()
+    mail_password = os.getenv('MAIL_PASSWORD', '').strip()
+    mail_from     = os.getenv('MAIL_FROM',     mail_username).strip() or mail_username
+
+    # Always log the URL so admin can test without an inbox
+    log.info("reset_email: URL for %s → %s", to_email, reset_url)
+
+    if not mail_username or not mail_password:
+        log.error(
+            "reset_email FAILED: MAIL_USERNAME or MAIL_PASSWORD missing from .env\n"
+            "  Add these lines to your .env file:\n"
+            "    MAIL_USERNAME=yourgmail@gmail.com\n"
+            "    MAIL_PASSWORD=xxxx xxxx xxxx xxxx  (Gmail App Password)\n"
+            "  Reset URL (use this to test): %s", reset_url
+        )
+        return False
+
+    first_name = (full_name or '').split()[0] if full_name else 'there'
+
+    plain = (
+        f"Hi {first_name},\n\n"
+        f"Reset your VaultCore password here (expires in 30 minutes):\n"
+        f"{reset_url}\n\n"
+        f"If you didn't request this, ignore this email.\n\n"
+        f"— VaultCore Wallet\n"
+    )
+
+    html = f"""<!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="margin:0;padding:0;background:#0b0d14;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#0b0d14;padding:40px 20px">
+        <tr><td align="center">
+        <table width="100%" style="max-width:480px;background:#13151f;border:1px solid #2a2d3a;border-radius:16px;overflow:hidden">
+            <tr>
+            <td style="padding:28px 32px 20px;border-bottom:1px solid #2a2d3a;text-align:center">
+                <div style="font-size:22px;font-weight:700;color:#c9a84c">VaultCore</div>
+                <div style="font-size:11px;color:#5a5e6e;margin-top:3px;text-transform:uppercase;letter-spacing:.06em">Wallet Platform</div>
+            </td>
+            </tr>
+            <tr>
+            <td style="padding:32px">
+                <p style="margin:0 0 6px;font-size:22px;font-weight:700;color:#e8eaf0">Reset your password</p>
+                <p style="margin:0 0 24px;font-size:14px;color:#9296a5;line-height:1.6">
+                Hi {first_name}, we received a request to reset your VaultCore Wallet password.<br>
+                This link expires in <strong style="color:#e8eaf0">30 minutes</strong>.
+                </p>
+                <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px">
+                <tr><td align="center">
+                    <a href="{reset_url}"
+                    style="display:inline-block;padding:14px 36px;background:#c9a84c;color:#0d0a02;font-size:15px;font-weight:700;text-decoration:none;border-radius:8px">
+                    Reset Password
+                    </a>
+                </td></tr>
+                </table>
+                <div style="background:#0b0d14;border:1px solid #2a2d3a;border-radius:8px;padding:12px 14px;margin-bottom:20px">
+                <p style="margin:0 0 4px;font-size:11px;color:#5a5e6e;text-transform:uppercase;letter-spacing:.06em">Or copy this link</p>
+                <p style="margin:0;font-size:11px;color:#9296a5;word-break:break-all;font-family:monospace">{reset_url}</p>
+                </div>
+                <p style="margin:0;font-size:13px;color:#5a5e6e;line-height:1.6">
+                If you didn't request this, you can safely ignore this email — your password will not change.
+                </p>
+            </td>
+            </tr>
+            <tr>
+            <td style="padding:16px 32px;border-top:1px solid #2a2d3a;text-align:center">
+                <p style="margin:0;font-size:11px;color:#5a5e6e">© VaultCore Wallet · Do not reply to this email.</p>
+            </td>
+            </tr>
+        </table>
+        </td></tr>
+    </table>
+    </body>
+    </html>"""
+
+    def _build_msg():
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = 'Reset your VaultCore password'
+        msg['From']    = f'VaultCore Wallet <{mail_from}>'
+        msg['To']      = to_email
+        msg.attach(MIMEText(plain, 'plain'))
+        msg.attach(MIMEText(html,  'html'))
+        return msg
+
+    # ── Try 1: STARTTLS on port 587 (standard) ───────────────
+    try:
+        with smtplib.SMTP(mail_server, 587, timeout=15) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(mail_username, mail_password)
+            server.sendmail(mail_from, [to_email], _build_msg().as_string())
+        log.info("reset_email: sent to %s via %s:587 (STARTTLS) ✓", to_email, mail_server)
+        return True
+
+    except smtplib.SMTPAuthenticationError as e:
+        log.error(
+            "reset_email AUTH FAILED on port 587 for user '%s':\n"
+            "  Error: %s\n"
+            "  → If using Gmail: go to https://myaccount.google.com/apppasswords\n"
+            "    create an App Password for 'Mail' and paste it as MAIL_PASSWORD in .env\n"
+            "    Do NOT use your regular Google account password.\n"
+            "  → Make sure 2-Step Verification is ON for your Google account first.",
+            mail_username, e
+        )
+    except smtplib.SMTPConnectError as e:
+        log.warning("reset_email: port 587 connection error (%s) — trying port 465 (SSL)…", e)
+    except smtplib.SMTPException as e:
+        log.warning("reset_email: SMTP error on port 587 (%s) — trying port 465 (SSL)…", e)
+    except OSError as e:
+        log.warning("reset_email: network error on port 587 (%s) — trying port 465 (SSL)…", e)
+
+    # ── Try 2: SSL on port 465 (fallback) ────────────────────
+    try:
+        import ssl as _ssl
+        ctx = _ssl.create_default_context()
+        with smtplib.SMTP_SSL(mail_server, 465, context=ctx, timeout=15) as server:
+            server.ehlo()
+            server.login(mail_username, mail_password)
+            server.sendmail(mail_from, [to_email], _build_msg().as_string())
+        log.info("reset_email: sent to %s via %s:465 (SSL) ✓", to_email, mail_server)
+        return True
+
+    except smtplib.SMTPAuthenticationError as e:
+        log.error(
+            "reset_email AUTH FAILED on port 465 for user '%s':\n"
+            "  Error: %s\n"
+            "  → Gmail App Password required — see instructions above.",
+            mail_username, e
+        )
+    except Exception as e:
+        log.error(
+            "reset_email FAILED on both port 587 and 465:\n"
+            "  Error: %s\n"
+            "  → Check MAIL_SERVER, MAIL_USERNAME, MAIL_PASSWORD in .env\n"
+            "  → Reset URL (copy and open manually): %s",
+            e, reset_url
+        )
+    return False
+
+@app.route('/forgot-password', methods=['GET'])
+def forgot_password():
+    """Render the forgot-password page."""
+    if get_current_user():
+        return redirect(url_for('home'))
+    return render_template('forgot_password.html')
+
+@app.route('/api/forgot-password', methods=['POST'])
+def api_forgot_password():
+    """
+    POST { email }
+    Always returns the same success message whether or not the
+    email exists (prevents user enumeration).
+    The reset URL is always printed to the terminal log so you
+    can test without a working inbox.
+    """
+    data  = request.get_json(force=True) or {}
+    email = (data.get('email') or '').strip().lower()
+
+    if not email or not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', email):
+        return jsonify({"error": "Enter a valid email address."}), 400
+
+    SAFE = "If an account exists for that email, a reset link is on its way. Check your spam folder too."
+
+    user = User.query.filter_by(email=email).first()
+    if not user:
+        log.info("reset: no account for %s — returning safe message", email)
+        return jsonify({"success": True, "message": SAFE})
+
+    try:
+        # Expire existing unused tokens
+        PasswordResetToken.query.filter_by(
+            user_id=user.id, used=False
+        ).update({"used": True})
+        db.session.flush()
+
+        raw_token  = secrets.token_urlsafe(48)
+        expires_at = datetime.utcnow() + timedelta(minutes=30)
+
+        prt = PasswordResetToken(
+            user_id    = user.id,
+            token      = raw_token,
+            expires_at = expires_at,
+            used       = False,
+        )
+        db.session.add(prt)
+        db.session.commit()
+
+        reset_url = f"{APP_BASE_URL}/reset-password/{raw_token}"
+        # Log the URL — always visible in terminal even if email fails
+        log.warning(
+            "\n"
+            "  ══════════════════════════════════════════════\n"
+            "  PASSWORD RESET LINK FOR %s\n"
+            "  %s\n"
+            "  ══════════════════════════════════════════════",
+            user.email, reset_url
+        )
+
+        _send_reset_email(user.email, reset_url, user.full_name or '')
+
+        return jsonify({"success": True, "message": SAFE})
+
+    except Exception as e:
+        db.session.rollback()
+        log.error("api_forgot_password: %s", e, exc_info=True)
+        return jsonify({"error": "Something went wrong. Please try again."}), 500
+
+@app.route('/reset-password/<token>', methods=['GET'])
+def reset_password(token):
+    """
+    Render the reset-password form.
+    If the token is already invalid we show an error state
+    in the template instead of a 404.
+    """
+    if get_current_user():
+        return redirect(url_for('home'))
+
+    prt = PasswordResetToken.query.filter_by(token=token).first()
+    token_valid = prt is not None and prt.is_valid()
+
+    return render_template(
+        'reset_password.html',
+        token       = token,
+        token_valid = token_valid,
+    )
+
+@app.route('/api/reset-password', methods=['POST'])
+def api_reset_password():
+    """
+    POST /api/reset-password
+    Body: { token, password, confirm_password }
+    """
+    data             = request.get_json(force=True) or {}
+    token            = (data.get('token')            or '').strip()
+    password         = (data.get('password')         or '').strip()
+    confirm_password = (data.get('confirm_password') or '').strip()
+
+    # ── Validate inputs ──────────────────────────────────────
+    if not token:
+        return jsonify({"error": "Reset token is missing."}), 400
+
+    pw_err = validate_password(password)
+    if pw_err:
+        return jsonify({"error": pw_err, "field": "password"}), 400
+
+    if password != confirm_password:
+        return jsonify({"error": "Passwords do not match.", "field": "confirm_password"}), 400
+
+    # ── Validate token ───────────────────────────────────────
+    prt = PasswordResetToken.query.filter_by(token=token).first()
+
+    if not prt:
+        return jsonify({"error": "Invalid reset link. Please request a new one."}), 400
+
+    if prt.used:
+        return jsonify({"error": "This reset link has already been used. Please request a new one."}), 400
+
+    if datetime.utcnow() > prt.expires_at:
+        return jsonify({"error": "This reset link has expired (30 min limit). Please request a new one."}), 400
+
+    try:
+        # ── Update password ──────────────────────────────────
+        user = prt.user
+        new_hash, new_salt = hash_password(password)
+        user.password_hash = new_hash
+        user.salt          = new_salt
+
+        # Mark token as used
+        prt.used = True
+        db.session.commit()
+
+        # Notify user via in-app notification
+        db.session.add(Notification(
+            user_id = user.id,
+            title   = '🔐 Password changed',
+            message = 'Your password was successfully reset. If you did not do this, contact support immediately.',
+            type    = 'warning',
+        ))
+        db.session.commit()
+
+        log.info("reset_password: success for %s", user.email)
+        return jsonify({
+            "success": True,
+            "message": "Password updated! You can now log in with your new password.",
+            "redirect": url_for('login'),
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        log.error("api_reset_password: %s", e, exc_info=True)
+        return jsonify({"error": "Something went wrong. Please try again."}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)

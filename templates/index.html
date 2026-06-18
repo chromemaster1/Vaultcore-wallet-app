@@ -298,39 +298,56 @@ function showMovers(type) {
 async function loadDashAssets(marketData) {
   try {
     const res = await fetch('/api/wallet-summary');
-    if (!res.ok) return;
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const holdings = data.holdings || {};
 
-    if (!Object.keys(holdings).length) {
+    // Sort by USD value, show ALL holdings with balance > 0
+    const entries = Object.entries(holdings)
+      .filter(([, h]) => (h.balance || 0) > 0)
+      .sort(([, a], [, b]) => (b.usd_value || 0) - (a.usd_value || 0));
+
+    if (!entries.length) {
       document.getElementById('dashAssets').innerHTML =
         '<div style="padding:12px 0;font-size:12px;color:var(--text-3)">No assets yet. Deposit to get started.</div>';
       return;
     }
 
-    const fmtP = p => p < 1 ? '$' + p.toFixed(4) : '$' + p.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
-
-    const html = Object.entries(holdings).slice(0, 6).map(([sym, h]) => {
-      const up = h.change_24h >= 0;
-      const chg = (up?'+':'') + h.change_24h.toFixed(2) + '%';
+    const html = entries.map(([sym, h]) => {
+      // change_24h is now returned by the backend — default 0 if missing
+      const chg24 = typeof h.change_24h === 'number' ? h.change_24h : 0;
+      const up    = chg24 >= 0;
+      const chg   = (up ? '+' : '') + chg24.toFixed(2) + '%';
+      const usd   = (h.usd_value || 0).toFixed(2);
+      const bal   = (h.balance   || 0).toFixed(6);
       return `
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
-          <span class="coin-icon ${sym.toLowerCase()} sm">${sym}</span>
-          <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)">
+          <span class="coin-icon ${sym.toLowerCase()} sm" style="flex-shrink:0">${sym}</span>
+          <div style="flex:1;min-width:0">
             <div style="font-size:13px;font-weight:700;color:var(--text-1)">${sym}</div>
-            <div style="font-size:11px;color:var(--text-3);font-family:'DM Mono',monospace">${h.balance.toFixed(6)}</div>
+            <div style="font-size:11px;color:var(--text-3);font-family:'DM Mono',monospace">${bal}</div>
           </div>
-          <div style="text-align:right">
-            <div style="font-size:13px;font-weight:600;color:var(--text-1);font-family:'DM Mono',monospace">$${h.usd_value.toFixed(2)}</div>
-            <div style="font-size:11px;font-weight:600;font-family:'DM Mono',monospace" class="${up?'chg-up':'chg-down'}">${chg}</div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-size:13px;font-weight:600;color:var(--text-1);font-family:'DM Mono',monospace">$${usd}</div>
+            <div style="font-size:11px;font-weight:600;font-family:'DM Mono',monospace" class="${up ? 'chg-up' : 'chg-down'}">${chg}</div>
           </div>
         </div>`;
     }).join('');
 
     document.getElementById('dashAssets').innerHTML = html;
+
+    // Also update total balance display if it exists on this page
+    const totalEl = document.getElementById('totalBalance') || document.getElementById('walletAmount');
+    if (totalEl && data.total_value !== undefined) {
+      totalEl.textContent = '$' + (data.total_value || 0).toLocaleString('en-US', {
+        minimumFractionDigits: 2, maximumFractionDigits: 2
+      });
+    }
+
   } catch(e) {
+    console.error('loadDashAssets failed:', e);
     document.getElementById('dashAssets').innerHTML =
-      '<div style="padding:12px 0;font-size:12px;color:var(--text-3)">Unable to load assets.</div>';
+      '<div style="padding:12px 0;font-size:12px;color:var(--text-3)">Could not load assets. <button onclick="loadDashAssets()" style="color:var(--gold);background:none;border:none;cursor:pointer;font-size:12px">Retry</button></div>';
   }
 }
 
