@@ -59,6 +59,9 @@ BINANCE_BASE   = "https://api.binance.com"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
+# ── CRITICAL: Render runs on HTTPS — cookies MUST be Secure or they are silently dropped ──
+_is_production = os.getenv("RENDER", "") or os.getenv("FLASK_ENV", "development") == "production"
+app.config["SESSION_COOKIE_SECURE"] = bool(_is_production)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('SQLALCHEMY_DATABASE_URI', 'sqlite:///user.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config["SQLALCHEMY_ECHO"] = False
@@ -1479,9 +1482,9 @@ def get_usdt_balance() -> float:
 # ══════════════════════════════════════════════
 @app.before_request
 def maybe_show_coming_soon():
-    # Allow static files, API, admin endpoints and health checks to bypass coming soon
+    # Allow static files, API, admin endpoints, auth pages and health checks to bypass coming soon
     path = (request.path or "").lower()
-    allowed_prefixes = ('/static', '/api', '/admin/coming-soon', '/admin')
+    allowed_prefixes = ('/static', '/api', '/admin/coming-soon', '/admin', '/login', '/register', '/logout', '/forgot-password', '/reset-password')
     if any(path.startswith(p) for p in allowed_prefixes):
         return None
 
@@ -2836,10 +2839,13 @@ def api_register():
 @app.route('/api/login', methods=['POST'])
 def api_login():
     """POST /api/login - Authenticate user."""
-    data = request.get_json(force=True)
+    data = request.get_json(force=True, silent=True)
 
-    email    = data.get("email", "").strip().lower()
-    password = data.get("password", "").strip()
+    if not data:
+        return jsonify({"error": "Invalid request — expected JSON body.", "field": "email"}), 400
+
+    email    = (data.get("email")    or "").strip().lower()
+    password = (data.get("password") or "").strip()
 
     # Validate email format
     email_err = validate_email(email)
@@ -2871,10 +2877,13 @@ def api_login():
 
     log.info("auth: login success — %s (role: %s) - session: %s", email, user.role, dict(session))
 
+    # Determine redirect based on role
+    redirect_url = url_for('admin_dashboard') if user.role == 'admin' else url_for('home')
+
     return jsonify({
         "success": True,
         "message": "Login successful!",
-        "redirect": url_for('home'),
+        "redirect": redirect_url,
         "user": {
             "email":     user.email,
             "full_name": user.full_name,
