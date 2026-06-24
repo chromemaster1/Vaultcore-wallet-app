@@ -379,8 +379,8 @@ async function sendAdminReply(e){
   const btn=document.getElementById('supSendBtn');if(btn)btn.disabled=true;
   try{
     const res=await fetch(`/api/admin/support/ticket/${_activeTicketId}/reply`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message})});
-    if(!res.ok){const err=await res.json().catch(()=>({}));showToast('Reply failed: '+(err.error||`HTTP ${res.status}`),'error');return;}
-    const data=await res.json();
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok){showToast('Reply failed: '+(data.error||`HTTP ${res.status}`),'error');return;}
     if(data.success){if(input)input.value='';await pollTicketMessages();}
     else showToast(data.error||'Failed to send','error');
   }catch(e){showToast('Network error: '+e.message,'error');}

@@ -116,15 +116,17 @@ async function submitRegister(event) {
 
         console.log('Registration response status:', res.status);
 
+        // Clone response BEFORE reading so we can fallback to text if JSON fails
+        const resClone = res.clone();
         let data;
         try {
             data = await res.json();
             console.log('Registration response data:', data);
         } catch (parseError) {
-            console.error('Failed to parse response:', parseError);
-            const text = await res.text();
-            console.error('Response text:', text);
-            throw new Error('Server returned invalid JSON');
+            console.error('Failed to parse response as JSON:', parseError);
+            const text = await resClone.text();   // read from clone, NOT original res
+            console.error('Raw server response:', text);
+            throw new Error('Server error — check console for raw response');
         }
 
         if (!res.ok) {

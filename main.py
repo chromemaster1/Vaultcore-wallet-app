@@ -59,9 +59,10 @@ BINANCE_BASE   = "https://api.binance.com"
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
-# ── CRITICAL: Render runs on HTTPS — cookies MUST be Secure or they are silently dropped ──
-_is_production = os.getenv("RENDER", "") or os.getenv("FLASK_ENV", "development") == "production"
-app.config["SESSION_COOKIE_SECURE"] = bool(_is_production)
+# CRITICAL: Render always serves over HTTPS — without Secure flag the
+# session cookie is silently dropped by the browser after every login.
+_on_render = bool(os.getenv("RENDER", ""))
+app.config["SESSION_COOKIE_SECURE"] = _on_render
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('SQLALCHEMY_DATABASE_URI', 'sqlite:///user.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config["SQLALCHEMY_ECHO"] = False
@@ -1482,7 +1483,7 @@ def get_usdt_balance() -> float:
 # ══════════════════════════════════════════════
 @app.before_request
 def maybe_show_coming_soon():
-    # Allow static files, API, admin endpoints, auth pages and health checks to bypass coming soon
+    # Allow static files, API, admin endpoints and health checks to bypass coming soon
     path = (request.path or "").lower()
     allowed_prefixes = ('/static', '/api', '/admin/coming-soon', '/admin', '/login', '/register', '/logout', '/forgot-password', '/reset-password')
     if any(path.startswith(p) for p in allowed_prefixes):
@@ -2877,7 +2878,7 @@ def api_login():
 
     log.info("auth: login success — %s (role: %s) - session: %s", email, user.role, dict(session))
 
-    # Determine redirect based on role
+    # Admins go to admin dashboard, regular users go to home
     redirect_url = url_for('admin_dashboard') if user.role == 'admin' else url_for('home')
 
     return jsonify({
