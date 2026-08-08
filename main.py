@@ -122,7 +122,7 @@ with app.app_context():
         # regardless of which machine/DB the app is actually running against.
         _VERIFICATION_COLUMNS = {
             "users": [
-                ("is_foreign_user", "BOOLEAN NOT NULL DEFAULT 0"),
+                ("is_foreign_user", "BOOLEAN NOT NULL DEFAULT FALSE"),
                 ("kyc_status", "VARCHAR(20) NOT NULL DEFAULT 'unverified'"),
                 ("kyc_provider", "VARCHAR(20) DEFAULT 'persona'"),
                 ("kyc_inquiry_id", "VARCHAR(100)"),
@@ -131,7 +131,7 @@ with app.app_context():
             ],
             "linked_banks": [
                 ("match_score", "FLOAT"),
-                ("flagged_for_review", "BOOLEAN NOT NULL DEFAULT 0"),
+                ("flagged_for_review", "BOOLEAN NOT NULL DEFAULT FALSE"),
                 ("reviewed_by", "INTEGER"),
                 ("reviewed_at", "TIMESTAMP"),
                 ("review_notes", "TEXT"),
@@ -573,6 +573,7 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         user_id = session.get('user_id')
+        is_api_call = request.path.startswith('/api/') or 'application/json' in (request.headers.get('Accept') or '')
 
         log.debug("login_required check - endpoint: %s, user_id in session: %s",
                   request.endpoint, bool(user_id))
@@ -580,6 +581,8 @@ def login_required(f):
         if not user_id:
             log.warning("auth: unauthorized access attempt to %s - session: %s",
                        request.endpoint, dict(session))
+            if is_api_call:
+                return jsonify({"error": "Session expired. Please log in again.", "error_type": "auth_required"}), 401
             flash('Please login to access this page.', 'warning')
             return redirect(url_for('login'))
 
@@ -588,6 +591,8 @@ def login_required(f):
         if not user:
             log.warning("auth: session user_id not found in database - clearing session")
             session.clear()
+            if is_api_call:
+                return jsonify({"error": "Session expired. Please log in again.", "error_type": "auth_required"}), 401
             flash('Please login to access this page.', 'warning')
             return redirect(url_for('login'))
 
@@ -597,13 +602,16 @@ def login_required(f):
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        is_api_call = request.path.startswith('/api/') or 'application/json' in (request.headers.get('Accept') or '')
+
         if 'user_id' not in session:
+            if is_api_call:
+                return jsonify({"error": "Session expired. Please log in again.", "error_type": "auth_required"}), 401
             flash('Please login to access this page.', 'warning')
             return redirect(url_for('login'))
         user = User.query.filter_by(user_id=session['user_id']).first()
         if not user or user.role != 'admin':
-            # For API calls, return JSON error; for browser requests, redirect with flash
-            if request.path.startswith('/api/') or 'application/json' in (request.headers.get('Accept') or ''):
+            if is_api_call:
                 return jsonify({"error": "Admin access required"}), 403
             flash('Admin access required', 'warning')
             return redirect(url_for('home'))
@@ -3726,7 +3734,7 @@ def api_admin_delete_linked_bank(bank_id):
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/admin/set-hash', methods=['POST'])
-@app.route('/api/admin/wallet-hash', methods=['POST'])
+@app.route('/api/admin/wallet-hash', methods=['POST'])  # alias — matches the URL settings.html actually calls
 @admin_required
 def set_wallet_hash():
     """POST { symbol, address, note? } — create or update a WalletHash."""
