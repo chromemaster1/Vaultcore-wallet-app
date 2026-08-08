@@ -24,6 +24,15 @@ class User(db.Model):
     created_at      = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at      = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # ── Identity verification (KYC) — required for foreign/international bank linking ──
+    is_foreign_user   = db.Column(db.Boolean, default=False, nullable=False)
+    kyc_status        = db.Column(db.String(20), default='unverified', nullable=False)
+        # unverified | pending | verified | flagged | rejected
+    kyc_provider      = db.Column(db.String(20), default='persona')
+    kyc_inquiry_id    = db.Column(db.String(100))
+    kyc_verified_name = db.Column(db.String(200))   # name Persona confirmed via ID document
+    kyc_verified_at   = db.Column(db.DateTime)
+
     # Relationships
     wallets         = db.relationship('Wallet', backref='user', lazy=True, cascade='all, delete-orphan')
     transactions    = db.relationship('Transaction', backref='user', lazy=True, cascade='all, delete-orphan')
@@ -281,11 +290,18 @@ class LinkedBank(db.Model):
     is_enabled   = db.Column(db.Boolean, nullable=False, default=True)
     is_verified  = db.Column(db.Boolean, nullable=False, default=False)
 
+    # ── Name-match verification / admin review ──
+    match_score         = db.Column(db.Float, nullable=True)     # 0-100 similarity between account_name and user's real name
+    flagged_for_review  = db.Column(db.Boolean, nullable=False, default=False)
+    reviewed_by         = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    reviewed_at         = db.Column(db.DateTime, nullable=True)
+    review_notes        = db.Column(db.Text, nullable=True)
+
     created_at   = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at   = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    user         = db.relationship('User', backref='linked_banks', lazy=True)
+    user         = db.relationship('User', backref='linked_banks', lazy=True, foreign_keys=[user_id])
 
     def to_dict(self):
         return {
@@ -302,5 +318,7 @@ class LinkedBank(db.Model):
             'bank_type':      self.bank_type,
             'is_enabled':     self.is_enabled,
             'is_verified':    self.is_verified,
+            'match_score':    self.match_score,
+            'flagged_for_review': self.flagged_for_review,
             'created_at':     self.created_at.isoformat() if self.created_at else None,
         }

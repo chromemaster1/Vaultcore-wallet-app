@@ -113,6 +113,45 @@ with app.app_context():
         tables = inspector.get_table_names()
         log.info("Existing tables: %s", tables)
 
+        # ── Self-healing schema patch ──
+        # db.create_all() only creates MISSING tables, it never adds columns
+        # to tables that already exist. Since 'users' and 'linked_banks'
+        # already existed before the verification fields were added below,
+        # this runs on every boot and adds any columns that are missing —
+        # so this can't silently drift out of sync with model.py again,
+        # regardless of which machine/DB the app is actually running against.
+        _VERIFICATION_COLUMNS = {
+            "users": [
+                ("is_foreign_user", "BOOLEAN NOT NULL DEFAULT 0"),
+                ("kyc_status", "VARCHAR(20) NOT NULL DEFAULT 'unverified'"),
+                ("kyc_provider", "VARCHAR(20) DEFAULT 'persona'"),
+                ("kyc_inquiry_id", "VARCHAR(100)"),
+                ("kyc_verified_name", "VARCHAR(200)"),
+                ("kyc_verified_at", "TIMESTAMP"),
+            ],
+            "linked_banks": [
+                ("match_score", "FLOAT"),
+                ("flagged_for_review", "BOOLEAN NOT NULL DEFAULT 0"),
+                ("reviewed_by", "INTEGER"),
+                ("reviewed_at", "TIMESTAMP"),
+                ("review_notes", "TEXT"),
+            ],
+        }
+        for _table, _cols in _VERIFICATION_COLUMNS.items():
+            if _table not in tables:
+                continue  # db.create_all() will have made it fresh with all columns already
+            _existing_cols = {c["name"] for c in inspector.get_columns(_table)}
+            for _col_name, _col_def in _cols:
+                if _col_name in _existing_cols:
+                    continue
+                try:
+                    db.session.execute(db.text(f"ALTER TABLE {_table} ADD COLUMN {_col_name} {_col_def}"))
+                    db.session.commit()
+                    log.info("schema patch: added %s.%s", _table, _col_name)
+                except Exception as _patch_err:
+                    db.session.rollback()
+                    log.error("schema patch: failed to add %s.%s: %s", _table, _col_name, _patch_err)
+
     except Exception as e:
         log.error("Failed to create database tables: %s", e, exc_info=True)
 
@@ -318,6 +357,7 @@ COUNTRIES = {
     "NG": {"name": "Nigeria",        "currency": "NGN", "symbol": "₦"},
     "US": {"name": "United States",  "currency": "USD", "symbol": "$"},
     "GB": {"name": "United Kingdom", "currency": "GBP", "symbol": "£"},
+    "CAD": {"name": "Canada",         "currency": "CAD", "symbol": "$"},
     "KE": {"name": "Kenya",          "currency": "KES", "symbol": "KSh"},
     "GH": {"name": "Ghana",          "currency": "GHS", "symbol": "₵"},
     "ZA": {"name": "South Africa",   "currency": "ZAR", "symbol": "R"},
@@ -332,6 +372,7 @@ EXCHANGE_RATES = {
     "NGN": 1650.00,
     "USD": 1.00,
     "GBP": 0.79,
+    "CAD": 1.35,
     "KES": 129.50,
     "GHS": 15.80,
     "ZAR": 18.45,
@@ -1442,31 +1483,124 @@ def resolve_account_name(country_code: str, bank_code: str, account_number: str)
     last  = last_names[(hash_val // 100) % len(last_names)]
 
     return f"{first} {last}"
+
 # ══════════════════════════════════════════════
-#  BANK LINKING (OAuth-style simulation)
+#  NAME MATCHING (local bank name vs registered name,
+#  and international account name vs KYC-verified name)
 # ══════════════════════════════════════════════
-def verify_banking_credentials(bank_code: str, username: str, password: str) -> tuple[bool, str]:
-    """
-    Verify online banking credentials.
-    In production, integrate with Plaid, Mono, or bank-specific OAuth.
+import difflib
 
-    Returns (success, error_message)
-    """
-    if not username or not password:
-        return False, "Username and password are required."
+# Tune these after watching real traffic land in the admin review queue
+NAME_MATCH_AUTO_APPROVE = 85   # >= this: auto-verify
+NAME_MATCH_FLAG_REVIEW  = 60   # between this and AUTO_APPROVE: admin review queue
+# below NAME_MATCH_FLAG_REVIEW: reject outright, user re-checks details
 
-    if len(password) < 4:
-        return False, "Invalid credentials — password too short."
+_TITLE_PATTERN = re.compile(
+    r"\b(mr|mrs|miss|ms|dr|engr|barr|chief|alhaji|alhaja|prof|otunba|hon)\.?\b",
+    re.IGNORECASE,
+)
 
-    # Mock verification — accept if password is not "wrong"
-    if password.lower() == "wrong":
-        return False, "Invalid username or password."
+def normalize_name(name: str) -> str:
+    """Strips titles/punctuation, sorts tokens — so word order doesn't matter."""
+    if not name:
+        return ""
+    name = _TITLE_PATTERN.sub("", name)
+    name = re.sub(r"[^a-zA-Z\s]", "", name)
+    return " ".join(sorted(name.lower().split()))
 
-    # Simulate API delay
-    time.sleep(0.5)
+def name_match_score(name_a: str, name_b: str) -> float:
+    """Token-order-independent similarity, 0-100."""
+    a, b = normalize_name(name_a), normalize_name(name_b)
+    if not a or not b:
+        return 0.0
+    return round(difflib.SequenceMatcher(None, a, b).ratio() * 100, 1)
 
-    log.info("bank_link: verified credentials for bank %s, user %s", bank_code, username)
-    return True, ""
+def classify_match(score: float) -> str:
+    if score >= NAME_MATCH_AUTO_APPROVE:
+        return "verified"
+    if score >= NAME_MATCH_FLAG_REVIEW:
+        return "flagged"
+    return "rejected"
+
+# ══════════════════════════════════════════════
+#  KYC IDENTITY VERIFICATION (Persona) — required
+#  before a foreign/international user can link a bank
+# ══════════════════════════════════════════════
+PERSONA_API_KEY        = os.getenv('PERSONA_API_KEY')
+PERSONA_TEMPLATE_ID    = os.getenv('PERSONA_TEMPLATE_ID')
+PERSONA_WEBHOOK_SECRET = os.getenv('PERSONA_WEBHOOK_SECRET')
+PERSONA_BASE_URL       = "https://api.withpersona.com/api/v1"
+
+def persona_create_inquiry(user_id: str) -> dict:
+    """Starts a hosted Persona KYC inquiry. Returns {inquiry_id, hosted_url}."""
+    if not PERSONA_API_KEY or not PERSONA_TEMPLATE_ID:
+        raise RuntimeError("PERSONA_API_KEY / PERSONA_TEMPLATE_ID not configured")
+
+    resp = requests.post(
+        f"{PERSONA_BASE_URL}/inquiries",
+        headers={
+            "Authorization": f"Bearer {PERSONA_API_KEY}",
+            "Content-Type": "application/json",
+            "Persona-Version": "2023-01-05",
+        },
+        json={"data": {"attributes": {
+            "inquiry-template-id": PERSONA_TEMPLATE_ID,
+            "reference-id": user_id,
+        }}},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    inquiry = resp.json()["data"]
+    return {
+        "inquiry_id": inquiry["id"],
+        "hosted_url": f"https://withpersona.com/verify?inquiry-id={inquiry['id']}",
+    }
+
+def persona_verify_webhook_signature(raw_body: bytes, signature_header: str) -> bool:
+    """Persona signs webhooks as: t=<timestamp>,v1=<hmac>"""
+    if not PERSONA_WEBHOOK_SECRET or not signature_header:
+        return False
+    try:
+        parts = dict(p.split("=", 1) for p in signature_header.split(","))
+        timestamp, provided_sig = parts.get("t"), parts.get("v1")
+        if not timestamp or not provided_sig:
+            return False
+        signed_payload = f"{timestamp}.{raw_body.decode('utf-8')}"
+        expected_sig = hmac.new(
+            PERSONA_WEBHOOK_SECRET.encode("utf-8"),
+            signed_payload.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        return hmac.compare_digest(expected_sig, provided_sig)
+    except Exception:
+        return False
+
+def persona_parse_webhook(payload: dict) -> dict:
+    """Maps a Persona webhook payload to {inquiry_id, reference_id, kyc_status, full_name}."""
+    inquiry = payload.get("data", {}).get("attributes", {}).get("payload", {}).get("data", {})
+    attrs = inquiry.get("attributes", {})
+    status = attrs.get("status")
+
+    if status == "approved":
+        kyc_status = "verified"
+    elif status in ("declined", "expired"):
+        kyc_status = "rejected"
+    elif status == "needs_review":
+        kyc_status = "flagged"
+    else:
+        kyc_status = "pending"
+
+    first = attrs.get("name-first", "") or ""
+    last = attrs.get("name-last", "") or ""
+    full_name = f"{first} {last}".strip() or None
+
+    return {
+        "inquiry_id": inquiry.get("id"),
+        "reference_id": attrs.get("reference-id"),
+        "kyc_status": kyc_status,
+        "full_name": full_name,
+    }
+
 # ══════════════════════════════════════════════
 #  MOCK WALLET BALANCE
 # ══════════════════════════════════════════════
@@ -2307,17 +2441,105 @@ def api_paystack_banks():
         log.warning("paystack banks failed, fallback to local: %s", e)
         return jsonify(LOCAL_BANKS.get(country, []))
 
+@app.route('/api/kyc/start', methods=['POST'])
+@login_required
+def api_kyc_start():
+    """
+    POST /api/kyc/start
+    Starts a Persona KYC inquiry for the current user (required before they
+    can link an international bank account). Returns a hosted URL the
+    frontend redirects/opens for the user to complete ID + selfie check.
+    """
+    user = get_current_user()
+    try:
+        inquiry = persona_create_inquiry(user_id=str(user.id))
+        user.kyc_status = 'pending'
+        user.kyc_inquiry_id = inquiry['inquiry_id']
+        db.session.commit()
+        return jsonify({"hosted_url": inquiry["hosted_url"], "kyc_status": "pending"})
+    except Exception as e:
+        log.error("api_kyc_start: %s", e, exc_info=True)
+        return jsonify({"error": "Could not start identity verification. Please try again shortly."}), 502
+
+
+@app.route('/api/kyc/status')
+@login_required
+def api_kyc_status():
+    """GET /api/kyc/status — lets the frontend poll after the user completes the hosted flow."""
+    user = get_current_user()
+    return jsonify({
+        "kyc_status": user.kyc_status,
+        "kyc_verified_name": user.kyc_verified_name,
+    })
+
+
+@app.route('/webhooks/persona', methods=['POST'])
+def persona_webhook():
+    """
+    Persona calls this when a KYC inquiry completes (approved/declined/needs_review).
+    Signature MUST verify — this endpoint is unauthenticated by necessity, so a
+    forged webhook is the only way someone could fake a KYC pass without it.
+    """
+    signature = request.headers.get('Persona-Signature', '')
+    raw_body = request.get_data()
+
+    if not persona_verify_webhook_signature(raw_body, signature):
+        log.warning("persona_webhook: invalid signature")
+        return jsonify({"error": "invalid signature"}), 401
+
+    try:
+        result = persona_parse_webhook(request.get_json(force=True))
+        reference_id = result.get('reference_id')
+        if not reference_id:
+            return jsonify({"received": True}), 200
+
+        user = User.query.get(int(reference_id))
+        if not user:
+            log.warning("persona_webhook: no user for reference_id=%s", reference_id)
+            return jsonify({"received": True}), 200
+
+        user.kyc_status = result['kyc_status']
+        if result['kyc_status'] == 'verified':
+            user.kyc_verified_at = datetime.utcnow()
+            if result.get('full_name'):
+                user.kyc_verified_name = result['full_name']
+
+        db.session.add(Notification(
+            user_id=user.id,
+            title='🪪 Identity verification update',
+            message=f"Your identity verification is now: {result['kyc_status']}.",
+            type='success' if result['kyc_status'] == 'verified' else 'info',
+        ))
+        db.session.commit()
+
+        log.info("persona_webhook: user=%s kyc_status=%s", user.email, result['kyc_status'])
+        return jsonify({"received": True}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        log.error("persona_webhook: %s", e, exc_info=True)
+        return jsonify({"error": "processing failed"}), 500
+
+
 @app.route('/api/link-bank', methods=['POST'])
 @login_required
 def api_link_bank():
     """
     POST /api/link-bank
-    Saves the verified bank account to DB for this user.
+    Saves a bank account to DB for this user — but only after real verification:
+
+    - LOCAL accounts (bank_type='local'): the account_name must have come from
+      the Paystack resolve step. We re-score it against the user's registered
+      full_name. Strong match -> verified. Partial match -> flagged for admin
+      review. Weak/no match -> rejected outright.
+
+    - INTERNATIONAL accounts (bank_type='international'): there's no bank API
+      to resolve these against, so we require the user to have passed Persona
+      KYC first (kyc_status == 'verified'), then match the typed account_name
+      against the KYC-confirmed legal name from the ID check.
+
     Body: { bank_code, bank_name, account_number, account_name,
             country_code?, bank_type?, iban?, swift_bic? }
-
-    Works with Paystack resolve — account_name comes from the
-    resolve step already completed on the frontend.
     """
     user = get_current_user()
     data = request.get_json(force=True) or {}
@@ -2327,12 +2549,43 @@ def api_link_bank():
     account_number = (data.get('account_number') or '').strip()
     account_name   = (data.get('account_name')   or '').strip()
     country_code   = (data.get('country_code')   or 'NG').strip().upper()
-    bank_type      = (data.get('bank_type')      or 'local').strip()
+    bank_type      = (data.get('bank_type')      or 'local').strip().lower()
     iban           = (data.get('iban')           or '').strip() or None
     swift_bic      = (data.get('swift_bic')      or '').strip() or None
 
     if not all([bank_code, bank_name, account_number, account_name]):
         return jsonify({"error": "bank_code, bank_name, account_number and account_name are required"}), 400
+
+    is_international = (bank_type == 'international') or (bank_code == 'INTL')
+
+    # ── Gate: international linking requires KYC to be verified first ──
+    if is_international:
+        if user.kyc_status != 'verified':
+            return jsonify({
+                "error": "Identity verification required before linking an international account.",
+                "error_type": "kyc_required",
+                "kyc_status": user.kyc_status,
+            }), 403
+        reference_name = user.kyc_verified_name or user.full_name
+    else:
+        reference_name = user.full_name
+
+    # ── Score the account name against the trusted reference name ──
+    score = name_match_score(account_name, reference_name)
+    verdict = classify_match(score)
+
+    if verdict == "rejected":
+        log.info("bank_link REJECTED: user=%s account_name=%r vs reference=%r score=%s",
+                  user.email, account_name, reference_name, score)
+        return jsonify({
+            "error": "The name on this account doesn't match your verified identity closely enough to link automatically. "
+                     "Double-check the account details, or contact support if this is your account.",
+            "error_type": "name_mismatch",
+            "match_score": score,
+        }), 422
+
+    is_verified        = (verdict == "verified")
+    flagged_for_review = (verdict == "flagged")
 
     # Check for existing link for same account
     existing = LinkedBank.query.filter_by(
@@ -2341,12 +2594,12 @@ def api_link_bank():
         account_number=account_number,
     ).first()
     if existing:
-        # Re-enable if it was disabled
-        existing.is_enabled  = True
-        existing.is_verified = True
-        existing.updated_at  = datetime.utcnow()
+        existing.is_enabled         = True
+        existing.is_verified        = is_verified
+        existing.match_score        = score
+        existing.flagged_for_review = flagged_for_review
+        existing.updated_at         = datetime.utcnow()
         db.session.commit()
-        # Also keep session in sync for the withdraw page template
         session['linked_bank'] = {
             'bank_code': existing.bank_code,
             'bank_name': existing.bank_name,
@@ -2354,42 +2607,49 @@ def api_link_bank():
             'linked_bank_id': existing.id,
         }
         return jsonify({
-            "success": True,
-            "bank_name": existing.bank_name,
-            "account_last4": existing.account_last4,
-            "linked_bank_id": existing.id,
+            "success":            True,
+            "status":             verdict,
+            "match_score":        score,
+            "bank_name":          existing.bank_name,
+            "account_last4":      existing.account_last4,
+            "linked_bank_id":     existing.id,
+            "flagged_for_review": flagged_for_review,
         })
 
     try:
         lb = LinkedBank(
-            user_id        = user.id,
-            bank_code      = bank_code,
-            bank_name      = bank_name,
-            country_code   = country_code,
-            account_number = account_number,
-            account_name   = account_name,
-            account_last4  = account_number[-4:] if len(account_number) >= 4 else '****',
-            iban           = iban,
-            swift_bic      = swift_bic,
-            bank_type      = bank_type,
-            is_enabled     = True,
-            is_verified    = True,
+            user_id            = user.id,
+            bank_code          = bank_code,
+            bank_name          = bank_name,
+            country_code       = country_code,
+            account_number     = account_number,
+            account_name       = account_name,
+            account_last4      = account_number[-4:] if len(account_number) >= 4 else '****',
+            iban               = iban,
+            swift_bic          = swift_bic,
+            bank_type          = bank_type,
+            is_enabled         = True,
+            is_verified        = is_verified,
+            match_score        = score,
+            flagged_for_review = flagged_for_review,
         )
         db.session.add(lb)
 
-        # Notify admin
+        # Notify admin — flagged links get a distinct, actionable notice
         admins = User.query.filter_by(role='admin').all()
         for admin in admins:
-            db.session.add(Notification(
-                user_id = admin.id,
-                title   = '🏦 New bank linked',
-                message = f'{user.email} linked {bank_name} (****{lb.account_last4})',
-                type    = 'info',
-            ))
+            if flagged_for_review:
+                title = '⚠️ Bank link flagged for review'
+                msg   = f'{user.email} linked {bank_name} (****{lb.account_last4}) — name match score {score}. Needs manual review.'
+                ntype = 'warning'
+            else:
+                title = '🏦 New bank linked'
+                msg   = f'{user.email} linked {bank_name} (****{lb.account_last4}) — verified, match score {score}.'
+                ntype = 'info'
+            db.session.add(Notification(user_id=admin.id, title=title, message=msg, type=ntype))
 
         db.session.commit()
 
-        # Keep session in sync (withdraw template checks session)
         session['linked_bank'] = {
             'bank_code':      lb.bank_code,
             'bank_name':      lb.bank_name,
@@ -2397,12 +2657,16 @@ def api_link_bank():
             'linked_bank_id': lb.id,
         }
 
-        log.info("bank_link: %s linked %s ****%s", user.email, bank_name, lb.account_last4)
+        log.info("bank_link: %s linked %s ****%s status=%s score=%s",
+                  user.email, bank_name, lb.account_last4, verdict, score)
         return jsonify({
-            "success":        True,
-            "bank_name":      lb.bank_name,
-            "account_last4":  lb.account_last4,
-            "linked_bank_id": lb.id,
+            "success":            True,
+            "status":             verdict,
+            "match_score":        score,
+            "bank_name":          lb.bank_name,
+            "account_last4":      lb.account_last4,
+            "linked_bank_id":     lb.id,
+            "flagged_for_review": flagged_for_review,
         })
 
     except Exception as e:
@@ -3260,6 +3524,55 @@ def api_admin_linked_banks():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/api/admin/linked-banks/<int:bank_id>/review', methods=['POST'])
+@admin_required
+def api_admin_review_linked_bank(bank_id):
+    """
+    Admin approves or rejects a flagged (partial name-match) linked bank.
+    Body: { decision: 'approve' | 'reject', notes?: str }
+    """
+    admin = get_current_user()
+    lb = LinkedBank.query.get(bank_id)
+    if not lb:
+        return jsonify({"error": "Linked bank not found"}), 404
+
+    data = request.get_json(force=True) or {}
+    decision = (data.get('decision') or '').strip().lower()
+    notes = (data.get('notes') or '').strip()
+
+    if decision not in ('approve', 'reject'):
+        return jsonify({"error": "decision must be 'approve' or 'reject'"}), 400
+
+    try:
+        lb.flagged_for_review = False
+        lb.reviewed_by = admin.id
+        lb.reviewed_at = datetime.utcnow()
+        lb.review_notes = notes or None
+
+        if decision == 'approve':
+            lb.is_verified = True
+            lb.is_enabled = True
+        else:
+            lb.is_verified = False
+            lb.is_enabled = False
+
+        db.session.add(Notification(
+            user_id=lb.user_id,
+            title='🏦 Bank link review complete',
+            message=f'Your linked bank {lb.bank_name} (****{lb.account_last4}) was {decision}d by admin.'
+                    + (f' Note: {notes}' if notes else ''),
+            type='success' if decision == 'approve' else 'warning',
+        ))
+        db.session.commit()
+
+        log.info("admin_review_lb: bank=%s decision=%s admin=%s", bank_id, decision, admin.email)
+        return jsonify({"success": True, "decision": decision, "is_verified": lb.is_verified})
+    except Exception as e:
+        db.session.rollback()
+        log.error("api_admin_review_linked_bank: %s", e, exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/admin/linked-banks/<int:bank_id>/toggle', methods=['POST'])
 @admin_required
 def api_admin_toggle_linked_bank(bank_id):
@@ -3413,6 +3726,7 @@ def api_admin_delete_linked_bank(bank_id):
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/admin/set-hash', methods=['POST'])
+@app.route('/api/admin/wallet-hash', methods=['POST'])
 @admin_required
 def set_wallet_hash():
     """POST { symbol, address, note? } — create or update a WalletHash."""

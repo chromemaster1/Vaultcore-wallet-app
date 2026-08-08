@@ -620,20 +620,42 @@ document.addEventListener('DOMContentLoaded', () => {
 async function loadLinkedBanks() {
   const grid = document.getElementById('lbGrid');
   if (!grid) return;
-  grid.innerHTML = '<tr><td colspan="8" class="adm-table-loading">Loading…</td></tr>';
+  grid.innerHTML = '<tr><td colspan="9" class="adm-table-loading">Loading…</td></tr>';
   try {
     const banks = await fetch('/api/admin/linked-banks').then(r => r.json());
     const badge = document.getElementById('badgeLB');
-    if (badge) badge.textContent = banks.length || '';
+    const flaggedCount = banks.filter(b => b.flagged_for_review).length;
+    if (badge) badge.textContent = flaggedCount ? `${flaggedCount} to review` : (banks.length || '');
 
     if (!banks.length) {
-      grid.innerHTML = '<tr><td colspan="8" class="adm-table-loading">No linked banks</td></tr>';
+      grid.innerHTML = '<tr><td colspan="9" class="adm-table-loading">No linked banks</td></tr>';
       return;
     }
 
     grid.innerHTML = banks.map(b => {
       const statusColor = b.is_enabled ? '#4ade80' : '#ef4444';
       const statusLabel = b.is_enabled ? 'Active'  : 'Disabled';
+
+      let matchCell;
+      if (b.flagged_for_review) {
+        matchCell = `<span style="color:#eab308;font-weight:700;font-size:12px">⚠ ${b.match_score ?? '—'}%</span>`;
+      } else if (b.match_score != null) {
+        const c = b.match_score >= 85 ? '#4ade80' : '#ef4444';
+        matchCell = `<span style="color:${c};font-weight:700;font-size:12px">${b.match_score}%</span>`;
+      } else {
+        matchCell = `<span style="color:var(--text-3);font-size:12px">—</span>`;
+      }
+
+      const reviewButtons = b.flagged_for_review ? `
+              <button class="btn-approve" style="font-size:11px;padding:4px 8px;color:#4ade80;border-color:rgba(74,222,128,.3)"
+                      onclick="reviewLb(${b.id},'approve',this)">
+                ✓ Approve
+              </button>
+              <button class="adm-btn-ghost" style="font-size:11px;color:#ef4444;border-color:rgba(239,68,68,.3)"
+                      onclick="reviewLb(${b.id},'reject',this)">
+                ✕ Reject
+              </button>` : '';
+
       return `
         <tr id="lb-row-${b.id}">
           <td>
@@ -650,13 +672,16 @@ async function loadLinkedBanks() {
           </td>
           <td style="text-transform:capitalize;font-size:12px">${b.bank_type||'local'}</td>
           <td style="font-size:12px">${b.country_code||'—'}</td>
+          <td>${matchCell}</td>
           <td>
             <span style="color:${statusColor};font-weight:700;font-size:12px">● ${statusLabel}</span>
             ${b.is_verified ? '<span style="font-size:10px;color:#4ade80;margin-left:4px">✓ Verified</span>' : ''}
+            ${b.flagged_for_review ? '<div style="font-size:10px;color:#eab308;margin-top:2px">Needs review</div>' : ''}
           </td>
           <td style="font-size:11px;color:var(--text-3)">${b.created_at ? new Date(b.created_at).toLocaleDateString() : '—'}</td>
           <td>
             <div style="display:flex;gap:5px;flex-wrap:wrap">
+              ${reviewButtons}
               <button class="btn-approve" style="font-size:11px;padding:4px 8px"
                       onclick="openLbModal(${b.id},'send','${b.bank_name}','****${b.account_last4}','${b.user_email}')">
                 ↑ Send
@@ -678,7 +703,30 @@ async function loadLinkedBanks() {
         </tr>`;
     }).join('');
   } catch(e) {
-    grid.innerHTML = `<tr><td colspan="8" class="adm-table-loading" style="color:var(--danger)">Error: ${e.message}</td></tr>`;
+    grid.innerHTML = `<tr><td colspan="9" class="adm-table-loading" style="color:var(--danger)">Error: ${e.message}</td></tr>`;
+  }
+}
+
+// LB review (approve/reject a flagged name-mismatch)
+async function reviewLb(bankId, decision, btn) {
+  if (decision === 'reject' && !confirm('Reject this bank link? The user will be notified and it will be disabled.')) return;
+  if (btn) btn.disabled = true;
+  try {
+    const data = await fetch(`/api/admin/linked-banks/${bankId}/review`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision }),
+    }).then(r => r.json());
+    if (data.success) {
+      showToast(`Bank link ${decision}d`, 'success');
+      loadLinkedBanks();
+    } else {
+      showToast(data.error || 'Failed', 'error');
+    }
+  } catch(e) {
+    showToast('Network error', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 

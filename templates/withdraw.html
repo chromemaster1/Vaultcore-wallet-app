@@ -70,10 +70,16 @@
     </div>
 
     <div id="internationalBankFields" style="display:none">
-      <div class="form-group"><label class="form-label">Bank Name</label><input type="text" id="intlBankName" class="form-input" placeholder="e.g. Bank of America" /></div>
-      <div class="form-group"><label class="form-label">Account Number / IBAN</label><input type="text" id="intlAccountNumber" class="form-input" placeholder="Account number or IBAN" /></div>
-      <div class="form-group"><label class="form-label">Account Holder Name</label><input type="text" id="intlAccountName" class="form-input" placeholder="Full name on account" /></div>
-      <div class="form-group"><label class="form-label">SWIFT / BIC <span style="color:var(--text-3)">(optional)</span></label><input type="text" id="swiftCode" class="form-input" placeholder="e.g. BOFAUS3N" /></div>
+      <div class="kyc-gate" id="kycGateBanner" style="display:none;padding:14px;border:1px solid var(--border-gold,#8a6d1f);background:var(--gold-a10,rgba(200,160,40,.08));border-radius:10px;margin-bottom:14px;font-size:13px;color:var(--text-2)">
+        <div id="kycGateMessage" style="margin-bottom:8px">International accounts require identity verification before linking.</div>
+        <button type="button" class="toggle-btn" id="btnStartKyc" onclick="startKyc()">Verify My Identity</button>
+      </div>
+      <div id="intlFormFields">
+        <div class="form-group"><label class="form-label">Bank Name</label><input type="text" id="intlBankName" class="form-input" placeholder="e.g. Bank of America" /></div>
+        <div class="form-group"><label class="form-label">Account Number / IBAN</label><input type="text" id="intlAccountNumber" class="form-input" placeholder="Account number or IBAN" /></div>
+        <div class="form-group"><label class="form-label">Account Holder Name</label><input type="text" id="intlAccountName" class="form-input" placeholder="Full name on account" /></div>
+        <div class="form-group"><label class="form-label">SWIFT / BIC <span style="color:var(--text-3)">(optional)</span></label><input type="text" id="swiftCode" class="form-input" placeholder="e.g. BOFAUS3N" /></div>
+      </div>
     </div>
 
     <div class="form-group">
@@ -159,7 +165,7 @@
 
 <script>
 const RATES = {{ exchange_rates|tojson }};
-let state = { country:'',currency:'USD',symbol:'$',bankType:'local',bankCode:'',bankName:'',accountName:'',banks:[],usdtBalance:0,exchangeRate:1.0,linkCountry:'',linkBankCode:'',linkBankName:'',linkAccountName:'',linkBanks:[] };
+let state = { country:'',currency:'USD',symbol:'$',bankType:'local',bankCode:'',bankName:'',accountName:'',banks:[],usdtBalance:0,exchangeRate:1.0,linkCountry:'',linkBankCode:'',linkBankName:'',linkAccountName:'',linkBanks:[],kycStatus:'unverified' };
 
 function switchMethod(m) {
   document.querySelectorAll('.method-tab').forEach(t=>t.classList.remove('active'));
@@ -187,6 +193,61 @@ function setBankType(type) {
   document.getElementById('btnInternational').classList.toggle('active',type==='international');
   document.getElementById('localBankFields').style.display=type==='local'?'block':'none';
   document.getElementById('internationalBankFields').style.display=type==='international'?'block':'none';
+  if (type==='international') refreshKycGate();
+}
+
+async function refreshKycGate() {
+  try {
+    const d = await fetch('/api/kyc/status').then(r=>r.json());
+    state.kycStatus = d.kyc_status || 'unverified';
+  } catch(e) { state.kycStatus = 'unverified'; }
+
+  const banner = document.getElementById('kycGateBanner');
+  const fields = document.getElementById('intlFormFields');
+  const msg = document.getElementById('kycGateMessage');
+  const btn = document.getElementById('btnStartKyc');
+
+  if (state.kycStatus === 'verified') {
+    banner.style.display = 'none';
+    fields.style.display = 'block';
+  } else {
+    banner.style.display = 'block';
+    fields.style.display = 'none';
+    if (state.kycStatus === 'pending') {
+      msg.textContent = 'Identity verification in progress — this can take a few minutes.';
+      btn.textContent = 'Check Status';
+      btn.onclick = refreshKycGate;
+    } else if (state.kycStatus === 'flagged') {
+      msg.textContent = 'Your identity verification needs manual review. Contact support for an update.';
+      btn.style.display = 'none';
+    } else if (state.kycStatus === 'rejected') {
+      msg.textContent = 'Identity verification was unsuccessful. Please try again with a valid government ID.';
+      btn.textContent = 'Retry Verification';
+      btn.onclick = startKyc;
+    } else {
+      msg.textContent = 'International accounts require identity verification before linking.';
+      btn.textContent = 'Verify My Identity';
+      btn.onclick = startKyc;
+      btn.style.display = 'inline-flex';
+    }
+  }
+}
+
+async function startKyc() {
+  const btn = document.getElementById('btnStartKyc');
+  btn.disabled = true; btn.textContent = 'Starting…';
+  try {
+    const res = await fetch('/api/kyc/start', {method:'POST'});
+    const data = await res.json();
+    if (!res.ok) { alert(data.error || 'Could not start verification.'); btn.disabled=false; return; }
+    window.open(data.hosted_url, '_blank', 'noopener');
+    state.kycStatus = 'pending';
+    setTimeout(refreshKycGate, 1500);
+  } catch(e) {
+    alert('Network error starting verification.');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function filterBanks() {
@@ -250,6 +311,7 @@ async function submitManualWithdraw() {
     payload.bank_code=state.bankCode; payload.account_number=document.getElementById('accountNumber').value; payload.account_name=state.accountName;
     if(document.getElementById('saveBankCheck')?.checked) saveBankToDB(state.bankCode,state.bankName,document.getElementById('accountNumber').value,state.accountName,state.country,'local');
   } else {
+    if(state.kycStatus!=='verified'){document.getElementById('amountError').textContent='Verify your identity before sending to an international account.';return;}
     const ib=document.getElementById('intlBankName').value.trim(),ia=document.getElementById('intlAccountNumber').value.trim(),in_=document.getElementById('intlAccountName').value.trim();
     if(!ib||!ia||!in_){document.getElementById('amountError').textContent='Fill all bank fields.';return;}
     payload.bank_code='INTL';payload.bank_name=ib;payload.account_number=ia;payload.account_name=in_;payload.swift=document.getElementById('swiftCode').value.trim();
@@ -346,7 +408,16 @@ async function submitLinkBank() {
   try{
     const res=await fetch('/api/link-bank',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bank_code:state.linkBankCode,bank_name:state.linkBankName,account_number:accNum,account_name:state.linkAccountName,country_code:state.linkCountry,bank_type:'local'})});
     const data=await res.json();
-    if(!res.ok||!data.success){result.innerHTML=`<div class="result-error">${data.error||'Link failed.'}</div>`;return;}
+    if(!res.ok||!data.success){
+      if(data.error_type==='kyc_required'){result.innerHTML='<div class="result-error">Please verify your identity first, then try linking again.</div>';return;}
+      result.innerHTML=`<div class="result-error">${data.error||'Link failed.'}</div>`;
+      return;
+    }
+    if(data.flagged_for_review){
+      result.innerHTML=`<div class="result-warning" style="padding:12px;border-radius:8px;background:rgba(234,179,8,.1);border:1px solid rgba(234,179,8,.3);color:var(--text-2);font-size:13px">Submitted — the name on this account didn't fully match your profile (match score ${data.match_score}), so it's pending admin review before you can withdraw to it.</div>`;
+      setTimeout(()=>window.location.reload(), 2500);
+      return;
+    }
     window.location.reload();
   }catch(e){result.innerHTML='<div class="result-error">Network error.</div>';}
   finally{btn.disabled=false;btn.textContent='Link Bank Account';}
