@@ -2721,14 +2721,14 @@ body.register-page #main {
 
 /* ── FOOTER ── */
 #footer {
-  padding: 36px 36px 24px;
+  padding: 24px 32px 16px;
   border-top: 1px solid var(--border);
 }
 
 .split.contact {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 24px;
+  gap: 16px;
 }
 
 .split.contact h3 {
@@ -2777,7 +2777,7 @@ body.register-page #main {
 }
 
 #copyright {
-  padding: 14px 36px;
+  padding: 10px 32px;
   border-top: 1px solid var(--border);
 }
 
@@ -2893,11 +2893,11 @@ select option {
   }
 
   #footer {
-    padding: 24px 16px 16px;
+    padding: 16px 16px 12px;
   }
 
   #copyright {
-    padding: 12px 16px;
+    padding: 10px 16px;
   }
 }
 
