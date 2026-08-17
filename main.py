@@ -1833,7 +1833,7 @@ def api_send():
         notif = Notification(
             user_id=user.id,
             title='Send pending',
-            message=f'Your send of {amount} {symbol} to {address[:10]}... is pending admin approval.',
+            message=f'Your send of {amount} {symbol} to {address[:10]}... is pending approval.',
             type='info'
         )
         db.session.add(notif)
@@ -1845,7 +1845,7 @@ def api_send():
             "success": True,
             "tx_id": tx_id,
             "status": "pending",
-            "message": "Send submitted and awaiting admin approval.",
+            "message": "Send submitted and awaiting approval.",
         })
 
     except Exception as e:
