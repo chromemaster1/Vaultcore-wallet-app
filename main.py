@@ -1833,7 +1833,7 @@ def api_send():
         notif = Notification(
             user_id=user.id,
             title='Send pending',
-            message=f'Your send of {amount} {symbol} to {address[:10]}... is pending approval.',
+            message=f'Your send of {amount} {symbol} to {address[:10]}... is pending admin approval.',
             type='info'
         )
         db.session.add(notif)
@@ -1845,7 +1845,7 @@ def api_send():
             "success": True,
             "tx_id": tx_id,
             "status": "pending",
-            "message": "Send submitted and awaiting approval.",
+            "message": "Send submitted and awaiting admin approval.",
         })
 
     except Exception as e:
@@ -1866,13 +1866,18 @@ def api_admin_pending_transactions():
             "tx_id": t.tx_id,
             "user_id": t.user.user_id,
             "user_email": t.user.email,
+            "user_full_name": t.user.full_name,
             "type": t.type,
             "symbol": t.symbol,
             "amount": t.amount,
+            "fee": t.fee,
             "to_address": t.to_address,
+            "from_address": t.from_address,
+            "notes": t.notes,
             "created_at": t.created_at.isoformat(),
         })
     return jsonify(out)
+
 
 
 # Admin: approve or reject a pending transaction

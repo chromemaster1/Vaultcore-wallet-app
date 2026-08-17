@@ -46,6 +46,8 @@ async function loadStats() {
 // ─────────────────────────────────────────────────────────────────
 //  PENDING TRANSACTIONS
 // ─────────────────────────────────────────────────────────────────
+let _pendingTxs = {}; // id -> full tx object, so modals don't need a re-fetch
+
 async function fetchPending() {
   const grid = document.getElementById('pendingTxGrid');
   if (!grid) return;
@@ -54,6 +56,9 @@ async function fetchPending() {
     const txs   = await fetch('/api/admin/pending-transactions').then(r => r.json());
     const badge = document.getElementById('badgePending');
     if (badge) badge.textContent = txs.length || '';
+    _pendingTxs = {};
+    txs.forEach(tx => { _pendingTxs[tx.id] = tx; });
+
     if (!txs.length) {
       grid.innerHTML = '<tr><td colspan="8" class="adm-table-loading" style="color:var(--success)">✓ No pending transactions</td></tr>';
       return;
@@ -75,8 +80,9 @@ async function fetchPending() {
           <td style="font-size:11px;color:var(--text-3)">${date}</td>
           <td>
             <div class="tx-actions-row">
-              <button class="btn-approve" onclick="openApproveModal(${tx.id},'${tx.type}','${tx.symbol}',${parseFloat(tx.amount||0)})">✓ Approve</button>
-              <button class="btn-decline" onclick="openDeclineModal(${tx.id},'${tx.type}','${tx.symbol}',${parseFloat(tx.amount||0)})">✗ Decline</button>
+              <button class="adm-btn-ghost" style="font-size:11px;padding:5px 8px" onclick="openTxDetailsModal(${tx.id})" title="View full details">👁 View</button>
+              <button class="btn-approve" onclick="openApproveModal(${tx.id})">✓ Approve</button>
+              <button class="btn-decline" onclick="openDeclineModal(${tx.id})">✗ Decline</button>
             </div>
           </td>
         </tr>`;
@@ -86,20 +92,64 @@ async function fetchPending() {
   }
 }
 
+// ── Full transaction details modal ──
+function _txDetailRow(label, value, mono) {
+  if (value === null || value === undefined || value === '') return '';
+  return `<div style="display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid var(--border)">
+    <span style="color:var(--text-3);flex-shrink:0">${label}</span>
+    <span style="text-align:right;word-break:break-all;${mono?"font-family:'DM Mono',monospace;font-size:12px":""}">${value}</span>
+  </div>`;
+}
+
+function openTxDetailsModal(txId) {
+  const tx = _pendingTxs[txId];
+  const modal = document.getElementById('txDetailsModal');
+  const body  = document.getElementById('txDetailsBody');
+  if (!tx || !modal || !body) return;
+
+  body.innerHTML = [
+    _txDetailRow('Transaction ID', tx.tx_id, true),
+    _txDetailRow('User', `${tx.user_full_name||''} (${tx.user_email})`),
+    _txDetailRow('User ID', tx.user_id, true),
+    _txDetailRow('Type', tx.type),
+    _txDetailRow('Asset', tx.symbol),
+    _txDetailRow('Amount', parseFloat(tx.amount||0).toFixed(8)),
+    _txDetailRow('Network fee', tx.fee ? parseFloat(tx.fee).toFixed(8) : null),
+    _txDetailRow('To address', tx.to_address, true),
+    _txDetailRow('From address', tx.from_address, true),
+    _txDetailRow('Notes', tx.notes),
+    _txDetailRow('Submitted', tx.created_at ? new Date(tx.created_at).toLocaleString() : null),
+  ].join('');
+
+  if (tx.to_address) {
+    body.innerHTML += `<button class="adm-btn-ghost" style="margin-top:12px;font-size:12px" onclick="navigator.clipboard.writeText('${tx.to_address}');this.textContent='Copied ✓'">📋 Copy destination address</button>`;
+  }
+
+  modal.classList.add('open'); modal.classList.remove('active');
+}
+
+function closeTxDetailsModal() {
+  const modal = document.getElementById('txDetailsModal');
+  if (modal) { modal.classList.remove('open'); modal.classList.add('active'); }
+}
+
 // ── TX Approve/Decline modal — uses .open to match styles.css ──
 let _pendingAction = null;
 
-function openApproveModal(txId, type, symbol, amount) {
+function openApproveModal(txId) {
+  const tx = _pendingTxs[txId];
   _pendingAction = { txId, action: 'approve' };
   const modal = document.getElementById('txActionModal');
-  if (!modal) { executeTxDirect(txId, 'approve', ''); return; }
+  if (!modal || !tx) { executeTxDirect(txId, 'approve', ''); return; }
   document.getElementById('txActionTitle').textContent = '✓ Approve Transaction';
   document.getElementById('txActionDesc').innerHTML =
-    `<div style="display:flex;gap:10px;align-items:center;padding:10px 14px;background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.2);border-radius:8px;margin-bottom:4px">
-      <span style="font-size:20px">💰</span>
-      <div><div style="font-weight:700;color:#4ade80">${type.toUpperCase()} — ${amount} ${symbol}</div>
-      <div style="font-size:12px;color:var(--text-3)">${type==='withdraw'||type==='send'?'Balance will be deducted on approval.':'Balance will be credited on approval.'}</div></div>
-    </div>`;
+    `<div style="padding:10px 14px;background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.2);border-radius:8px;margin-bottom:4px">
+      <div style="font-weight:700;color:#4ade80;margin-bottom:6px">${tx.type.toUpperCase()} — ${parseFloat(tx.amount||0)} ${tx.symbol}</div>
+      <div style="font-size:12px;color:var(--text-2);margin-bottom:2px">User: ${tx.user_email}</div>
+      ${tx.to_address ? `<div style="font-size:11px;font-family:'DM Mono',monospace;color:var(--text-2);word-break:break-all;margin-top:6px;padding-top:6px;border-top:1px solid rgba(74,222,128,.15)">To: ${tx.to_address}</div>` : ''}
+      <div style="font-size:12px;color:var(--text-3);margin-top:6px">${tx.type==='withdraw'||tx.type==='send'?'Balance will be deducted on approval.':'Balance will be credited on approval.'}</div>
+    </div>
+    <div style="font-size:12px;color:var(--warning,#eab308)">Confirm these details are correct — this cannot be undone once approved.</div>`;
   const noteEl = document.getElementById('txActionNote');
   if (noteEl) { noteEl.value=''; noteEl.placeholder='Optional note to user…'; }
   const btn = document.getElementById('txActionConfirm');
@@ -107,16 +157,18 @@ function openApproveModal(txId, type, symbol, amount) {
   modal.classList.add('open'); modal.classList.remove('active');
 }
 
-function openDeclineModal(txId, type, symbol, amount) {
+function openDeclineModal(txId) {
+  const tx = _pendingTxs[txId];
   _pendingAction = { txId, action: 'reject' };
   const modal = document.getElementById('txActionModal');
-  if (!modal) { executeTxDirect(txId, 'reject', ''); return; }
+  if (!modal || !tx) { executeTxDirect(txId, 'reject', ''); return; }
   document.getElementById('txActionTitle').textContent = '✗ Decline Transaction';
   document.getElementById('txActionDesc').innerHTML =
-    `<div style="display:flex;gap:10px;align-items:center;padding:10px 14px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:8px;margin-bottom:4px">
-      <span style="font-size:20px">🚫</span>
-      <div><div style="font-weight:700;color:#ef4444">${type.toUpperCase()} — ${amount} ${symbol}</div>
-      <div style="font-size:12px;color:var(--text-3)">No funds will be moved. User will be notified.</div></div>
+    `<div style="padding:10px 14px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:8px;margin-bottom:4px">
+      <div style="font-weight:700;color:#ef4444;margin-bottom:6px">${tx.type.toUpperCase()} — ${parseFloat(tx.amount||0)} ${tx.symbol}</div>
+      <div style="font-size:12px;color:var(--text-2);margin-bottom:2px">User: ${tx.user_email}</div>
+      ${tx.to_address ? `<div style="font-size:11px;font-family:'DM Mono',monospace;color:var(--text-2);word-break:break-all;margin-top:6px;padding-top:6px;border-top:1px solid rgba(239,68,68,.15)">To: ${tx.to_address}</div>` : ''}
+      <div style="font-size:12px;color:var(--text-3);margin-top:6px">No funds will be moved. User will be notified.</div>
     </div>`;
   const noteEl = document.getElementById('txActionNote');
   if (noteEl) { noteEl.value=''; noteEl.placeholder='Reason for declining (shown to user)…'; }
